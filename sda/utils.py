@@ -87,3 +87,13 @@ def is_valid_format_version(value):
 
 def is_valid_writable(value):
     return value == 'yes' or value == 'no'
+
+
+def write_header(h5file):
+    attrs = h5file.attrs
+    attrs['FileFormat'] = 'SDA'
+    attrs['FormatVersion'] = '1.0'
+    attrs['Writable'] = 'yes'
+    date_str = get_date_str()
+    attrs['Created'] = date_str
+    attrs['Modified'] = date_str

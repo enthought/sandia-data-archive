@@ -2,35 +2,12 @@ import datetime
 import unittest
 
 from sda.exceptions import BadSDAFile
-from sda.testing import temporary_h5file
+from sda.testing import BAD_ATTRS, GOOD_ATTRS, temporary_h5file
 from sda.utils import (
-    error_if_bad_attr,
-    error_if_bad_header,
-    error_if_not_writable,
-    get_date_str,
-    is_valid_date,
-    is_valid_file_format,
-    is_valid_format_version,
-    is_valid_writable,
+    error_if_bad_attr, error_if_bad_header, error_if_not_writable,
+    get_date_str, is_valid_date, is_valid_file_format, is_valid_format_version,
+    is_valid_writable, write_header
 )
-
-
-BAD_ATTRS = {
-    'FileFormat': 'SDB',
-    'FormatVersion': '0.5',
-    'Writable': 'nope',
-    'Created': '2017-01-01 01:23:45',
-    'Modifed': '2017-01-01 01:23:45',
-}
-
-
-GOOD_ATTRS = {
-    'FileFormat': 'SDA',
-    'FormatVersion': '1.1',
-    'Writable': 'yes',
-    'Created': '18-Aug-2017 01:23:45',
-    'Modifed': '18-Aug-2017 01:23:45',
-}
 
 
 class TestUtils(unittest.TestCase):
@@ -111,3 +88,14 @@ class TestUtils(unittest.TestCase):
         self.assertFalse(is_valid_writable('NO'))
         self.assertFalse(is_valid_writable(True))
         self.assertFalse(is_valid_writable(False))
+
+    def test_write_header(self):
+
+        with temporary_h5file() as h5file:
+            write_header(h5file)
+
+            attrs = h5file.attrs
+            self.assertEqual(attrs['FileFormat'], 'SDA')
+            self.assertEqual(attrs['FormatVersion'], '1.0')
+            self.assertEqual(attrs['Writable'], 'yes')
+            self.assertEqual(attrs['Created'], attrs['Modified'])

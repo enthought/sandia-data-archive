@@ -8,12 +8,14 @@ when interrogating the contents of an SDA file.
 
 """
 
+from contextlib import contextmanager
 import os.path as op
 
 import h5py
 
 from .utils import (
-    error_if_bad_header, error_if_not_writable, get_date_str, is_valid_writable
+    error_if_bad_header, error_if_not_writable, is_valid_writable,
+    write_header,
 )
 
 
@@ -49,67 +51,78 @@ class SDAFile(object):
 
         """
         file_exists = op.isfile(name)
-        self._h5file = h5py.File(name, mode, **kw)
+        self._mode = mode
+        self._filename = name
+
+        # Check existence
+        if mode in ('r', 'r+') and not file_exists:
+            msg = "File '{}' does not exist".format(name)
+            raise IOError(msg)
 
         # Check the header when mode requires the file to exist
-        if mode in ('r', 'r+') or (file_exists and mode == 'a'):
-            error_if_bad_header(self._h5file)
+        with self._h5file() as h5file:
+            if mode in ('r', 'r+') or (file_exists and mode == 'a'):
+                error_if_bad_header(h5file)
 
-        # Check that file is writable when mode will write to file
-        if mode == 'r+' or (file_exists and mode == 'a'):
-            error_if_not_writable(self._h5file)
+            # Check that file is writable when mode will write to file
+            if mode == 'r+' or (file_exists and mode == 'a'):
+                error_if_not_writable(h5file)
 
-        # Create the header if this is a new file
-        if mode in ('w', 'w-', 'x') or not (file_exists and mode == 'a'):
-            self._write_header()
+            # Create the header if this is a new file
+            if mode in ('w', 'w-', 'x') or (not file_exists and mode == 'a'):
+                write_header(h5file)
 
     # File properties
 
     @property
     def name(self):
         """ File name on disk. """
-        return self._h5file.filename
+        return self._filename
 
     @property
     def mode(self):
         """ Mode used to open file. """
-        return self._h5file.mode
+        return self.mode
 
     # Format attrs
 
     @property
     def FileFormat(self):
-        return self._h5file.attrs['FileFormat']
+        return self._get_attr('FileFormat')
 
     @property
     def FormatVersion(self):
-        return self._h5file.attrs['FormatVersion']
+        return self._get_attr('FormatVersion')
 
     @property
     def Writable(self):
-        return self._h5file.attrs['Writable']
+        return self._get_attr('Writable')
 
     @Writable.setter
     def Writable(self, value):
         if not is_valid_writable(value):
             raise ValueError("Must be 'yes' or 'no'")
-        self._h5file.attrs['Writable'] = value
+        with self._h5file() as h5file:
+            h5file.attrs['Writable'] = value
 
     @property
     def Created(self):
-        return self._h5file.attrs['Created']
+        return self._get_attr('Created')
 
     @property
     def Modified(self):
-        return self._h5file.attrs['Modified']
+        return self._get_attr('Modified')
 
     # Private
 
-    def _write_header(self):
-        attrs = self._h5file.attrs
-        attrs['FileFormat'] = 'SDA'
-        attrs['FormatVersion'] = '1.0'
-        attrs['Writable'] = 'yes'
-        date_str = get_date_str()
-        attrs['Created'] = date_str
-        attrs['Modified'] = date_str
+    @contextmanager
+    def _h5file(self):
+        h5file = h5py.File(self._filename, self._mode)
+        try:
+            yield h5file
+        finally:
+            h5file.close()
+
+    def _get_attr(self, attr):
+        with self._h5file() as h5file:
+            return h5file.attrs[attr]
