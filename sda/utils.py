@@ -4,7 +4,7 @@ from datetime import datetime
 import re
 import time
 
-from .errors import BadSDAFile
+from .exceptions import BadSDAFile
 
 
 # DD-MMM-YYYY HH:MM:SS
@@ -54,13 +54,14 @@ def error_if_not_writable(h5file):
         raise IOError(msg)
 
 
-def get_date_str(self):
-    now = datetime.now()
-    if now.hour == now.minute == now.second:
+def get_date_str(dt=None):
+    if dt is None:
+        dt = datetime.now()
+    if dt.hour == dt.minute == dt.second:
         fmt = DATE_FORMAT_SHORT
     else:
         fmt = DATE_FORMAT
-    date_str = now.strftime(fmt)
+    date_str = dt.strftime(fmt)
     return date_str
 
 
