@@ -19,6 +19,9 @@ from .utils import (
 )
 
 
+WRITE_MODES = ('w', 'w-', 'x', 'a')
+
+
 class SDAFile(object):
     """ Read, write, inspect, and manipulate Sandia Data Archive files.
 
@@ -60,17 +63,18 @@ class SDAFile(object):
             raise IOError(msg)
 
         # Check the header when mode requires the file to exist
-        with self._h5file() as h5file:
-            if mode in ('r', 'r+') or (file_exists and mode == 'a'):
+        if mode in ('r', 'r+') or (file_exists and mode == 'a'):
+            with self._h5file('r') as h5file:
                 error_if_bad_header(h5file)
 
-            # Check that file is writable when mode will write to file
-            if mode == 'r+' or (file_exists and mode == 'a'):
-                error_if_not_writable(h5file)
+                # Check that file is writable when mode will write to file
+                if mode != 'r':
+                    error_if_not_writable(h5file)
 
-            # Create the header if this is a new file
-            if mode in ('w', 'w-', 'x') or (not file_exists and mode == 'a'):
-                write_header(h5file)
+        # Create the header if this is a new file
+        if mode in ('w', 'w-', 'x') or (not file_exists and mode == 'a'):
+            with self._h5file('w') as h5file:
+                write_header(h5file.attrs)
 
     # File properties
 
@@ -100,9 +104,11 @@ class SDAFile(object):
 
     @Writable.setter
     def Writable(self, value):
+        if self._mode not in WRITE_MODES:
+            raise ValueError("File is not writable.")
         if not is_valid_writable(value):
             raise ValueError("Must be 'yes' or 'no'")
-        with self._h5file() as h5file:
+        with self._h5file('w') as h5file:
             h5file.attrs['Writable'] = value
 
     @property
@@ -116,13 +122,13 @@ class SDAFile(object):
     # Private
 
     @contextmanager
-    def _h5file(self):
-        h5file = h5py.File(self._filename, self._mode)
+    def _h5file(self, mode):
+        h5file = h5py.File(self._filename, mode)
         try:
             yield h5file
         finally:
             h5file.close()
 
     def _get_attr(self, attr):
-        with self._h5file() as h5file:
+        with self._h5file('r') as h5file:
             return h5file.attrs[attr]

@@ -89,8 +89,7 @@ def is_valid_writable(value):
     return value == 'yes' or value == 'no'
 
 
-def write_header(h5file):
-    attrs = h5file.attrs
+def write_header(attrs):
     attrs['FileFormat'] = 'SDA'
     attrs['FormatVersion'] = '1.0'
     attrs['Writable'] = 'yes'

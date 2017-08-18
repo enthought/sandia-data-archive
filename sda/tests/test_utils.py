@@ -92,7 +92,7 @@ class TestUtils(unittest.TestCase):
     def test_write_header(self):
 
         with temporary_h5file() as h5file:
-            write_header(h5file)
+            write_header(h5file.attrs)
 
             attrs = h5file.attrs
             self.assertEqual(attrs['FileFormat'], 'SDA')
