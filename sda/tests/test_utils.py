@@ -59,6 +59,10 @@ class TestUtils(unittest.TestCase):
         date_str = get_date_str(dt)
         self.assertEqual(date_str, '18-Aug-2017 02:22:11')
 
+        dt = datetime.datetime(2017, 8, 18, 1, 1, 1)
+        date_str = get_date_str(dt)
+        self.assertEqual(date_str, '18-Aug-2017 01:01:01')
+
         dt = datetime.datetime(2017, 8, 18, 0, 0, 0)
         date_str = get_date_str(dt)
         self.assertEqual(date_str, '18-Aug-2017')

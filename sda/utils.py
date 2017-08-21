@@ -58,7 +58,7 @@ def error_if_not_writable(h5file):
 def get_date_str(dt=None):
     if dt is None:
         dt = datetime.now()
-    if dt.hour == dt.minute == dt.second:
+    if dt.hour == dt.minute == dt.second == 0:
         fmt = DATE_FORMAT_SHORT
     else:
         fmt = DATE_FORMAT
