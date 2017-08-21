@@ -13,6 +13,7 @@ from .exceptions import BadSDAFile
 DATE_FORMAT = "%d-%b-%Y %H:%M:%S"
 DATE_FORMAT_SHORT = "%d-%b-%Y"
 
+# Regular expression for version string
 VERSION_1_RE = re.compile('1\.\d+')
 
 
@@ -31,6 +32,7 @@ def error_if_bad_attr(h5file, attr, is_valid):
 
 
 def error_if_bad_header(h5file):
+    """ Raise BadSDAFile if SDA header attributes are missing or invalid. """
     # FileFormat flag
     error_if_bad_attr(h5file, 'FileFormat', is_valid_file_format)
 
@@ -56,6 +58,7 @@ def error_if_not_writable(h5file):
 
 
 def get_date_str(dt=None):
+    """ Get a valid date string from a datetime, or current time. """
     if dt is None:
         dt = datetime.now()
     if dt.hour == dt.minute == dt.second == 0:
@@ -79,18 +82,22 @@ def is_valid_date(date_str):
 
 
 def is_valid_file_format(value):
+    """ Check that file format is equivalent to 'SDA' """
     return value == 'SDA'
 
 
 def is_valid_format_version(value):
+    """ Check that version is '1.X' """
     return VERSION_1_RE.match(value) is not None
 
 
 def is_valid_writable(value):
+    """ Check that writable flag is 'yes' or 'no' """
     return value == 'yes' or value == 'no'
 
 
 def write_header(attrs):
+    """ Write default header values to dict-like ``attrs``. """
     attrs['FileFormat'] = 'SDA'
     attrs['FormatVersion'] = '1.0'
     attrs['Writable'] = 'yes'
