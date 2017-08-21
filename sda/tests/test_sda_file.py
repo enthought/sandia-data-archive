@@ -59,6 +59,13 @@ class TestSDAFile(unittest.TestCase):
         sda_file = SDAFile(name)
         self.assertEqual(sda_file.mode, 'a')
 
+    def test_init_kw(self):
+        with temporary_file() as name:
+            pass  # file is deleted after this point
+        sda_file = SDAFile(name, 'w', driver='core')
+        with sda_file._h5file('r') as h5file:
+            self.assertEqual(h5file.driver, 'core')
+
     def assertAttrs(self, sda_file, attrs):
         for attr, expected in attrs.items():
             actual = getattr(sda_file, attr)

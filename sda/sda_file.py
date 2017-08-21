@@ -51,6 +51,7 @@ class SDAFile(object):
         file_exists = op.isfile(name)
         self._mode = mode
         self._filename = name
+        self._kw = kw
 
         # Check existence
         if mode in ('r', 'r+') and not file_exists:
@@ -118,7 +119,7 @@ class SDAFile(object):
 
     @contextmanager
     def _h5file(self, mode):
-        h5file = h5py.File(self._filename, mode)
+        h5file = h5py.File(self._filename, mode, **self._kw)
         try:
             yield h5file
         finally:
