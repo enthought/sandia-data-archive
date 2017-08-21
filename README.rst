@@ -9,6 +9,6 @@ Tools for reading, writing, altering, and inspecting Sandia Data Archive (SDA) f
    :target: https://ci.appveyor.com/project/EnthoughtOSS/sandia-data-archive
    :alt: Build status (Windows)
 
-.. image:: https://coveralls.io/repos/enthought/sandia-data-archive/badge.png
-   :target: https://coveralls.io/r/enthought/sandia-data-archive
+.. image:: https://coveralls.io/repos/github/enthought/sandia-data-archive/badge.svg?branch=master
+   :target: https://coveralls.io/github/enthought/sandia-data-archive?branch=master
    :alt: Coverage status
