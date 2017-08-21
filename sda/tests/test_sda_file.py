@@ -118,6 +118,37 @@ class TestSDAFile(unittest.TestCase):
     def test_init_w_minus(self):
         self.test_init_x('w-')
 
+    def test_init_a(self):
+        default_attrs = {}
+        write_header(default_attrs)
+
+        # No file, no problem
+        with temporary_file() as name:
+            pass  # file is deleted after this point
+        sda_file = SDAFile(name, 'a')
+        self.assertHeader(sda_file, default_attrs)
+
+        # Uninitialized -> BadSDAFile
+        with temporary_h5file() as h5file:
+            name = h5file.filename
+            h5file.close()
+            with self.assertRaises(BadSDAFile):
+                sda_file = SDAFile(name, 'a')
+
+        # Initialized, no problem, header and data is preserved
+        with temporary_h5file() as h5file:
+            name = h5file.filename
+            h5file.attrs.update(GOOD_ATTRS)
+            h5file.close()
+            sda_file = SDAFile(name, 'a')
+            self.assertHeader(sda_file, GOOD_ATTRS)
+
+    def test_init_default(self):
+        with temporary_file() as name:
+            pass  # file is deleted after this point
+        sda_file = SDAFile(name)
+        self.assertEqual(sda_file.mode, 'a')
+
     def assertHeader(self, sda_file, attrs):
         for attr, expected in attrs.items():
             actual = getattr(sda_file, attr)

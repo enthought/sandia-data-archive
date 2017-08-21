@@ -9,6 +9,7 @@ from .exceptions import BadSDAFile
 
 # DD-MMM-YYYY HH:MM:SS
 # MATLAB code uses 'datestr' to create this. HH:MM:SS is optional if all zero.
+# This variant is DATE_FORMAT_SHORT.
 DATE_FORMAT = "%d-%b-%Y %H:%M:%S"
 DATE_FORMAT_SHORT = "%d-%b-%Y"
 

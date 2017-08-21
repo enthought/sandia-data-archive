@@ -2,7 +2,7 @@
 
 The SDA format was designed to be universal to facilitate data sharing across
 multiple languages. It does contain constructs that are specific to MATLAB.
-These constructs, the *function* and *object* data types cannot be written to
+These constructs, the *function* and *object* data types, cannot be written to
 or read from the ``SDAFile`` interface. However, entries of this type do appear
 when interrogating the contents of an SDA file.
 
@@ -30,12 +30,7 @@ class SDAFile(object):
 
     """
 
-    # The version supported by this implementation. If SDA version 2 comes
-    # along, a proper SDAFile interface, object hierarchy, and version support
-    # should be implemented.
-    supported_version = '1'
-
-    def __init__(self, name, mode, **kw):
+    def __init__(self, name, mode='a', **kw):
         """ Open an SDA file for reading, writing, or interrogation.
 
         Parameters
@@ -43,11 +38,11 @@ class SDAFile(object):
         name : str
             The name of the file to be loaded or created.
         mode : str
-            r       Read-only, file must exist
-            r+      Read/write, file must exist
-            w       Create file, truncate if exists
-            w- or x Create file, fail if exists
-            a       Read/write if exists, create otherwise (default)
+            r         Read-only, file must exist
+            r+        Read/write, file must exist
+            w         Create file, truncate if exists
+            w- or x   Create file, fail if exists
+            a         Read/write if exists, create otherwise (default)
         kw :
             Key-word arguments that are passed to the underlying HDF5 file. See
             h5py.File for options.
@@ -86,7 +81,7 @@ class SDAFile(object):
     @property
     def mode(self):
         """ Mode used to open file. """
-        return self.mode
+        return self._mode
 
     # Format attrs
 
