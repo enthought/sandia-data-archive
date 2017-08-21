@@ -1,0 +1,5 @@
+nose
+Sphinx
+coverage
+coveralls
+h5py
