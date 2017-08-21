@@ -19,36 +19,24 @@ class TestSDAFile(unittest.TestCase):
     def test_init_r_plus(self):
         self.assertInitNew('r+', exc=IOError)
         self.assertInitExisting('r+', exc=BadSDAFile)
-        self.assertInitExisting('r+', {}, BadSDAFile)
+        self.assertInitExisting('r+', exc=BadSDAFile)
         self.assertInitExisting('r+', BAD_ATTRS, BadSDAFile)
         self.assertInitExisting('r+', GOOD_ATTRS)
 
     def test_init_w(self):
-        attrs = {}
-        write_header(attrs)
-        self.assertInitNew('w', attrs)
-        self.assertInitExisting('w', attrs)
-        self.assertInitExisting('w', {})
+        self.assertInitNew('w')
+        self.assertInitExisting('w')
 
     def test_init_x(self):
-        attrs = {}
-        write_header(attrs)
-
-        self.assertInitNew('x', attrs)
+        self.assertInitNew('x')
         self.assertInitExisting('x', exc=IOError)
 
     def test_init_w_minus(self):
-        attrs = {}
-        write_header(attrs)
-
-        self.assertInitNew('w-', attrs)
+        self.assertInitNew('w-')
         self.assertInitExisting('w-', exc=IOError)
 
     def test_init_a(self):
-        attrs = {}
-        write_header(attrs)
-
-        self.assertInitNew('a', attrs)
+        self.assertInitNew('a')
         self.assertInitExisting('a', GOOD_ATTRS)
         self.assertInitExisting('a', BAD_ATTRS, BadSDAFile)
         self.assertInitExisting('a', {}, BadSDAFile)
@@ -66,7 +54,19 @@ class TestSDAFile(unittest.TestCase):
         with sda_file._h5file('r') as h5file:
             self.assertEqual(h5file.driver, 'core')
 
-    def assertAttrs(self, sda_file, attrs):
+    def assertAttrs(self, sda_file, attrs={}):
+        """ Assert sda_file attributes are equal to passed values.
+
+        if ``attrs`` is empty, check that ``attrs`` take on the default values.
+
+        """
+        if attrs == {}:  # treat as if new
+            self.assertEqual(sda_file.Created, sda_file.Modified)
+            attrs = {}
+            write_header(attrs)
+            del attrs['Created']
+            del attrs['Modified']
+
         for attr, expected in attrs.items():
             actual = getattr(sda_file, attr)
             self.assertEqual(actual, expected)
@@ -80,7 +80,8 @@ class TestSDAFile(unittest.TestCase):
         """
         with temporary_h5file() as h5file:
             name = h5file.filename
-            h5file.attrs.update(attrs)
+            if attrs is not None:
+                h5file.attrs.update(attrs)
             h5file.close()
 
             if exc is not None:
@@ -100,4 +101,4 @@ class TestSDAFile(unittest.TestCase):
                 SDAFile(name, mode)
         else:
             sda_file = SDAFile(name, mode)
-            self.assertAttrs(sda_file, attrs)
+            self.assertAttrs(sda_file)
