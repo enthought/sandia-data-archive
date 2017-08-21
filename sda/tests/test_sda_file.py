@@ -98,6 +98,27 @@ class TestSDAFile(unittest.TestCase):
             sda_file = SDAFile(name, 'w')
             self.assertHeader(sda_file, default_attrs)
 
+    def test_init_x(self, mode='x'):
+        default_attrs = {}
+        write_header(default_attrs)
+
+        # No file, no problem
+        with temporary_file() as name:
+            pass  # file is deleted after this point
+        sda_file = SDAFile(name, mode)
+        self.assertHeader(sda_file, default_attrs)
+
+        # Yes file, error
+        with temporary_h5file() as h5file:
+            name = h5file.filename
+            h5file.close()
+            with self.assertRaises(IOError):
+                sda_file = SDAFile(name, mode)
+
+    def test_init_w_minus(self):
+        self.test_init_x('w-')
+
     def assertHeader(self, sda_file, attrs):
-        for attr, value in attrs.items():
-            self.assertEqual(getattr(sda_file, attr), value)
+        for attr, expected in attrs.items():
+            actual = getattr(sda_file, attr)
+            self.assertEqual(actual, expected)

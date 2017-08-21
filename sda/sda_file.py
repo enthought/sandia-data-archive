@@ -73,7 +73,7 @@ class SDAFile(object):
 
         # Create the header if this is a new file
         if mode in ('w', 'w-', 'x') or (not file_exists and mode == 'a'):
-            with self._h5file('w') as h5file:
+            with self._h5file(mode) as h5file:
                 write_header(h5file.attrs)
 
     # File properties
