@@ -90,7 +90,6 @@ def infer_record_type(obj):
         the type is unsupported.
 
     """
-
     if np.isscalar(obj):
         check = isinstance
         cast_obj = obj
@@ -102,11 +101,11 @@ def infer_record_type(obj):
     if check(obj, (bool, np.bool_)):
         return 'logical', cast_obj
 
-    if check(obj, (int, float, complex, np.number)):
+    if check(obj, (int, np.long, float, complex, np.number)):
         return 'numeric', cast_obj
 
     # Only accept strings, not arrays of strings
-    if isinstance(obj, str):  # Numpy strings are also str
+    if isinstance(obj, (str, np.unicode)):  # Numpy strings are also str
         return 'character', cast_obj
 
     return None, None

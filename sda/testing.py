@@ -6,11 +6,6 @@ import tempfile
 import h5py
 import numpy as np
 
-try:
-    long(0)
-except NameError:
-    long = int
-
 
 BAD_ATTRS = {
     'FileFormat': 'SDB',
@@ -43,7 +38,7 @@ TEST_SCALARS = [
     (np.float32(FLOAT_VAL), 'numeric'),
     (np.float64(FLOAT_VAL), 'numeric'),
     (INT_VAL, 'numeric'),
-    (long(INT_VAL), 'numeric'),
+    (np.long(INT_VAL), 'numeric'),
     (np.int8(INT_VAL), 'numeric'),
     (np.int16(INT_VAL), 'numeric'),
     (np.int32(INT_VAL), 'numeric'),
