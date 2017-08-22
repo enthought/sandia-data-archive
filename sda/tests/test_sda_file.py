@@ -113,6 +113,51 @@ class TestSDAFileInit(unittest.TestCase):
 
 class TestSDAFileInsert(unittest.TestCase):
 
+    def test_read_only(self):
+        with temporary_h5file() as h5file:
+            name = h5file.filename
+            h5file.attrs.update(GOOD_ATTRS)
+            h5file.close()
+            sda_file = SDAFile(name, 'r')
+
+            with self.assertRaises(IOError):
+                sda_file.insert('test', [1, 2, 3])
+
+    def test_write_off(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            sda_file.Writable = 'no'
+            with self.assertRaises(IOError):
+                sda_file.insert('test', [1, 2, 3])
+
+    def test_invalid_deflate(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            with self.assertRaises(ValueError):
+                sda_file.insert('test', [1, 2, 3], deflate=-1)
+
+            with self.assertRaises(ValueError):
+                sda_file.insert('test', [1, 2, 3], deflate=10)
+
+            with self.assertRaises(ValueError):
+                sda_file.insert('test', [1, 2, 3], deflate=None)
+
+    def test_invalid_label(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            with self.assertRaises(ValueError):
+                sda_file.insert('test/', [1, 2, 3])
+
+            with self.assertRaises(ValueError):
+                sda_file.insert('test\\', [1, 2, 3])
+
+    def test_label_exists(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            sda_file.insert('test', [1, 2, 3])
+            with self.assertRaises(ValueError):
+                sda_file.insert('test', [1, 2, 3])
+
     def test_insert_character_scalar(self):
         values = (obj for (obj, typ) in TEST_SCALARS if typ == 'character')
         with temporary_file() as file_path:
