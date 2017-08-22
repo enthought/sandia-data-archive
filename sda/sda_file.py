@@ -217,6 +217,15 @@ class SDAFile(object):
     def _insert_numeric(self, label, data, description, deflate):
         self._insert_data(label, data, description, deflate, 'numeric')
 
+    def _insert_logical(self, label, data, description, deflate):
+        # Coerce the stored type to uint8
+        if np.isscalar(data) or data.shape == ():
+            data = 1 if data else 0
+        else:
+            data = data.astype(np.uint8).clip(0, 1)
+
+        self._insert_data(label, data, description, deflate, 'logical')
+
     def _label_exists(self, label):
         with self._h5file('r') as h5file:
             return label in h5file
