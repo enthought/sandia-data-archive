@@ -1,14 +1,21 @@
+import os
 import unittest
+
+import numpy as np
+from numpy.testing import assert_equal
 
 from sda.exceptions import BadSDAFile
 from sda.sda_file import SDAFile
-from sda.testing import BAD_ATTRS, GOOD_ATTRS, temporary_file, temporary_h5file
+from sda.testing import (
+    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_SCALARS, TEST_UNSUPPORTED,
+    temporary_file, temporary_h5file
+)
 from sda.utils import write_header
 
 # TODO - test actual read and write
 
 
-class TestSDAFile(unittest.TestCase):
+class TestSDAFileInit(unittest.TestCase):
 
     def test_init_r(self):
         self.assertInitNew('r', exc=IOError)
@@ -42,17 +49,18 @@ class TestSDAFile(unittest.TestCase):
         self.assertInitExisting('a', {}, BadSDAFile)
 
     def test_init_default(self):
-        with temporary_file() as name:
-            pass  # file is deleted after this point
-        sda_file = SDAFile(name)
-        self.assertEqual(sda_file.mode, 'a')
+        with temporary_h5file() as h5file:
+            name = h5file.filename
+            h5file.attrs.update(GOOD_ATTRS)
+            h5file.close()
+            sda_file = SDAFile(name)
+            self.assertEqual(sda_file.mode, 'a')
 
     def test_init_kw(self):
-        with temporary_file() as name:
-            pass  # file is deleted after this point
-        sda_file = SDAFile(name, 'w', driver='core')
-        with sda_file._h5file('r') as h5file:
-            self.assertEqual(h5file.driver, 'core')
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w', driver='core')
+            with sda_file._h5file('r') as h5file:
+                self.assertEqual(h5file.driver, 'core')
 
     def assertAttrs(self, sda_file, attrs={}):
         """ Assert sda_file attributes are equal to passed values.
@@ -93,12 +101,85 @@ class TestSDAFile(unittest.TestCase):
 
     def assertInitNew(self, mode, attrs={}, exc=None):
         """ Assert attributes or error when init with non-existing file. """
-        with temporary_file() as name:
-            pass  # file is deleted after this point
+        with temporary_file() as file_path:
+            os.remove(file_path)
+            if exc is not None:
+                with self.assertRaises(exc):
+                    SDAFile(file_path, mode)
+            else:
+                sda_file = SDAFile(file_path, mode)
+                self.assertAttrs(sda_file)
 
-        if exc is not None:
-            with self.assertRaises(exc):
-                SDAFile(name, mode)
-        else:
-            sda_file = SDAFile(name, mode)
-            self.assertAttrs(sda_file)
+
+class TestSDAFileInsert(unittest.TestCase):
+
+    def test_insert_unsupported(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            for i, obj in enumerate(TEST_UNSUPPORTED):
+                label = 'test' + str(i)
+                with self.assertRaises(ValueError):
+                    sda_file.insert(label, obj, label, 0)
+
+    def test_insert_numeric_array(self):
+        values = (obj for (obj, typ) in TEST_ARRAYS if typ == 'numeric')
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            for i, obj in enumerate(values):
+                label = 'test' + str(i)
+                deflate = i % 10
+                sda_file.insert(label, obj, label, deflate)
+                expected = np.asarray(obj)
+                self.assertRecord(
+                    sda_file, 'numeric', label, deflate, 'no', expected
+                )
+
+            # Make sure the 'Modified' attr gets updated
+            with sda_file._h5file('a') as h5file:
+                h5file.attrs['Modified'] = 'Unmodified'
+
+            label = 'test_empty'
+            deflate = 0
+            sda_file.insert(label, [], label, deflate)
+            self.assertRecord(sda_file, 'numeric', label, deflate, 'yes', None)
+            self.assertNotEqual(sda_file.Modified, 'Unmodified')
+
+    def test_insert_numeric_scalar(self):
+        values = (obj for (obj, typ) in TEST_SCALARS if typ == 'numeric')
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            for i, obj in enumerate(values):
+                label = 'test' + str(i)
+                deflate = i % 10
+                sda_file.insert(label, obj, label, deflate)
+                self.assertRecord(
+                    sda_file, 'numeric', label, deflate, 'no', obj
+                )
+
+            # Make sure the 'Modified' attr gets updated
+            with sda_file._h5file('a') as h5file:
+                h5file.attrs['Modified'] = 'Unmodified'
+
+            label = 'test_nan'
+            deflate = 0
+            sda_file.insert(label, np.nan, label, deflate)
+            self.assertRecord(sda_file, 'numeric', label, deflate, 'yes', None)
+            self.assertNotEqual(sda_file.Modified, 'Unmodified')
+
+    def assertRecord(self, sda_file, record_type, label, deflate, empty,
+                     expected):
+        with sda_file._h5file('r') as h5file:
+            g = h5file[label]
+            self.assertEqual(g.attrs['RecordType'], record_type)
+            self.assertEqual(g.attrs['Deflate'], deflate)
+            self.assertEqual(g.attrs['Description'], label)
+            self.assertEqual(g.attrs['Empty'], empty)
+
+            ds = g[label]
+            self.assertEqual(ds.attrs['RecordType'], record_type)
+            self.assertEqual(ds.attrs['Empty'], empty)
+            if empty == 'no':
+                assert_equal(ds[()], expected)

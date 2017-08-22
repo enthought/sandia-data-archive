@@ -72,28 +72,43 @@ def get_date_str(dt=None):
 
 
 def infer_record_type(obj):
-    """ Infer record type of ``obj`` or None if ``obj`` is not supported.
+    """ Infer record type of ``obj``.
 
     Supported types are 'numeric', 'bool', and 'character'.
+
+    Parameters
+    ----------
+    obj :
+        An object to store
+
+    Returns
+    -------
+    record_type : str or None
+        The inferred record type, or None if the object type is not supported.
+    cast_obj :
+        The object if scalar, the object cast as a numpy array if not, or None
+        the type is unsupported.
 
     """
 
     if np.isscalar(obj):
         check = isinstance
+        cast_obj = obj
     else:
         check = issubclass
-        obj = np.asarray(obj).dtype.type
+        cast_obj = np.asarray(obj)
+        obj = cast_obj.dtype.type
 
     if check(obj, (bool, np.bool_)):
-        return 'logical'
+        return 'logical', cast_obj
 
     if check(obj, (int, float, complex, np.number)):
-        return 'numeric'
+        return 'numeric', cast_obj
 
     if check(obj, str):  # Numpy strings are also str
-        return 'character'
+        return 'character', cast_obj
 
-    return None
+    return None, None
 
 
 def is_valid_date(date_str):
