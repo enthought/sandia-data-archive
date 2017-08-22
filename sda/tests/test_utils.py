@@ -1,12 +1,18 @@
 import datetime
 import unittest
 
+import numpy as np
+from numpy.testing import assert_array_equal
+
 from sda.exceptions import BadSDAFile
-from sda.testing import BAD_ATTRS, GOOD_ATTRS, temporary_h5file
+from sda.testing import (
+    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_SCALARS, TEST_UNSUPPORTED,
+    temporary_h5file
+)
 from sda.utils import (
     error_if_bad_attr, error_if_bad_header, error_if_not_writable,
-    get_date_str, is_valid_date, is_valid_file_format, is_valid_format_version,
-    is_valid_writable, write_header
+    get_date_str, infer_record_type, is_valid_date, is_valid_file_format,
+    is_valid_format_version, is_valid_writable, write_header
 )
 
 
@@ -103,3 +109,26 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(attrs['FormatVersion'], '1.0')
             self.assertEqual(attrs['Writable'], 'yes')
             self.assertEqual(attrs['Created'], attrs['Modified'])
+
+    def test_infer_record_type(self):
+
+        # scalars
+        for obj, typ in TEST_SCALARS:
+            msg = 'record type of {!r} != {}'.format(obj, typ)
+            record_type, cast_obj = infer_record_type(obj)
+            self.assertEqual(record_type, typ, msg=msg)
+            self.assertEqual(cast_obj, obj)
+
+        # lists, tuples, and arrays
+        for obj, typ in TEST_ARRAYS:
+            msg = 'record type of {!r} != {}'.format(obj, typ)
+            record_type, cast_obj = infer_record_type(obj)
+            self.assertEqual(record_type, typ, msg=msg)
+            assert_array_equal(cast_obj, np.asarray(obj))
+
+        # Unsupported
+        for obj in TEST_UNSUPPORTED:
+            msg = 'record type of {!r} is not None'.format(obj)
+            record_type, cast_obj = infer_record_type(obj)
+            self.assertIsNone(record_type, msg=msg)
+            self.assertIsNone(cast_obj)

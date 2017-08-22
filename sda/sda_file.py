@@ -12,10 +12,11 @@ from contextlib import contextmanager
 import os.path as op
 
 import h5py
+import numpy as np
 
 from .utils import (
-    error_if_bad_header, error_if_not_writable, is_valid_writable,
-    write_header,
+    error_if_bad_header, error_if_not_writable, get_date_str,
+    infer_record_type, is_valid_writable, write_header,
 )
 
 
@@ -115,7 +116,123 @@ class SDAFile(object):
     def Modified(self):
         return self._get_attr('Modified')
 
+    # Public
+    def insert(self, label, data, description='', deflate=0):
+        """ Insert data into an SDA file.
+
+        Parameters
+        ----------
+        label : str
+            The data label.
+        data :
+            The data to insert. 'numeric', 'logical', and 'character' types are
+            supported. Strings are accepted as 'character' type. 'numeric' and
+            'logical' types can be scalar or array-like.
+        description : str, optional
+            A description to accompany the data
+        deflate : int, optional
+            An integer value from 0 to 9, specifying the compression level to
+            be applied to the stored data.
+
+        Raises
+        ------
+        ValueError if the data is of an unsupported type
+        ValueError if the label is invalid
+        ValueError if the label exists
+
+        Note
+        ----
+        This relies on numpy to cast inhomogeneous array-like data to a
+        homogeneous type.  It is the responsibility of the caller to homogenize
+        the input data if the numpy casting machinery is not sufficient for the
+        input data.
+
+        """
+        if self._mode not in WRITE_MODES:
+            raise IOError("File is not writable")
+        if self.Writable == 'no':
+            raise IOError("'Writable' flag is 'no'")
+        if not isinstance(deflate, int) or not 0 <= deflate <= 9:
+            msg = "'deflate' must be an integer from 0 to 9"
+            raise ValueError(msg)
+        if '/' in label or '\\' in label:
+            msg = r"label cannot contain '/' or '\'"
+            raise ValueError(msg)
+        if self._is_existing_label(label):
+            msg = "Label '{}' already exists. Call 'replace' to replace it."
+            raise ValueError(msg.format(label))
+        record_type, cast_obj = infer_record_type(data)
+        if record_type is None:
+            msg = "{!r} is not a supported type".format(data)
+            raise ValueError(data)
+
+        if record_type == 'numeric':
+            self._insert_numeric(label, cast_obj, description, deflate)
+        elif record_type == 'logical':
+            self._insert_logical(label, cast_obj, description, deflate)
+        elif record_type == 'character':
+            self._insert_character(label, cast_obj, description, deflate)
+        else:
+            # Should not happen
+            msg = "Unrecognized record type '{}'".format(record_type)
+            raise RuntimeError(msg)
+
+        self._update_modified()
+
     # Private
+    def _insert_data(self, label, data, description, deflate, record_type):
+        """ Worker for the _insert methods
+
+        This expects the data to be a scalar or cast as a numpy array.
+
+        """
+        empty = 'no'
+        if np.isscalar(data) or data.shape == ():
+            maxshape = None
+            compression = None
+            if np.isnan(data):
+                empty = 'yes'
+        else:
+            compression = deflate
+            maxshape = (None,) * data.ndim
+            if np.squeeze(data).shape == (0,):
+                empty = 'yes'
+
+        with self._h5file('a') as h5file:
+            g = h5file.create_group(label)
+            g.attrs['RecordType'] = record_type
+            g.attrs['Deflate'] = deflate
+            g.attrs['Description'] = description
+            g.attrs['Empty'] = empty
+
+            ds = g.create_dataset(
+                label,
+                maxshape=maxshape,
+                data=data,
+                compression=compression,
+            )
+            ds.attrs['RecordType'] = record_type
+            ds.attrs['Empty'] = empty
+
+    def _insert_character(self, label, data, description, deflate):
+        data = np.frombuffer(data.encode('ascii'), 'S1').view('uint8')
+        self._insert_data(label, data, description, deflate, 'character')
+
+    def _insert_numeric(self, label, data, description, deflate):
+        self._insert_data(label, data, description, deflate, 'numeric')
+
+    def _insert_logical(self, label, data, description, deflate):
+        # Coerce the stored type to uint8
+        if np.isscalar(data) or data.shape == ():
+            data = 1 if data else 0
+        else:
+            data = data.astype(np.uint8).clip(0, 1)
+
+        self._insert_data(label, data, description, deflate, 'logical')
+
+    def _is_existing_label(self, label):
+        with self._h5file('r') as h5file:
+            return label in h5file
 
     @contextmanager
     def _h5file(self, mode):
@@ -128,3 +245,7 @@ class SDAFile(object):
     def _get_attr(self, attr):
         with self._h5file('r') as h5file:
             return h5file.attrs[attr]
+
+    def _update_modified(self):
+        with self._h5file('a') as h5file:
+            h5file.attrs['Modified'] = get_date_str()
