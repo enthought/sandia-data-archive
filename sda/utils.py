@@ -105,7 +105,8 @@ def infer_record_type(obj):
     if check(obj, (int, float, complex, np.number)):
         return 'numeric', cast_obj
 
-    if check(obj, str):  # Numpy strings are also str
+    # Only accept strings, not arrays of strings
+    if isinstance(obj, str):  # Numpy strings are also str
         return 'character', cast_obj
 
     return None, None

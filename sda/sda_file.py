@@ -126,7 +126,8 @@ class SDAFile(object):
             The data label.
         data :
             The data to insert. 'numeric', 'logical', and 'character' types are
-            supported.
+            supported. Strings are accepted as 'character' type. 'numeric' and
+            'logical' types can be scalar or array-like.
         description : str, optional
             A description to accompany the data
         deflate : int, optional
@@ -142,10 +143,9 @@ class SDAFile(object):
         Note
         ----
         This relies on numpy to upcast inhomogeneous data to homogeneous type.
-        This may result in casting to a supported type.  For example, ``[3,
-        'hello']`` will be cast as 'character' type. It is the responsibility
-        of the caller to homogenize the input data if the numpy casting
-        machinery is not sufficient for the input data.
+        This may result in casting to a supported type. It is the
+        responsibility of the caller to homogenize the input data if the numpy
+        casting machinery is not sufficient for the input data.
 
         """
         if self._mode not in WRITE_MODES:
@@ -213,6 +213,10 @@ class SDAFile(object):
             )
             ds.attrs['RecordType'] = record_type
             ds.attrs['Empty'] = empty
+
+    def _insert_character(self, label, data, description, deflate):
+        data = np.frombuffer(data.encode('ascii'), 'S1').view('uint8')
+        self._insert_data(label, data, description, deflate, 'character')
 
     def _insert_numeric(self, label, data, description, deflate):
         self._insert_data(label, data, description, deflate, 'numeric')

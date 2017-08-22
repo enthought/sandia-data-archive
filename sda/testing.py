@@ -63,24 +63,25 @@ TEST_SCALARS = [
 ]
 
 # array scalars
-TEST_SCALARS += [(np.array(val), typ) for val, typ in TEST_SCALARS]
+TEST_SCALARS += [
+    (np.array(val), typ) for val, typ in TEST_SCALARS if typ != 'character'
+]
 
 
 # lists, tuples, and arrays
 TEST_ARRAYS = []
 for val, typ in TEST_SCALARS:
-    arr = [val] * 4
-    TEST_ARRAYS.append((arr, typ))
-    TEST_ARRAYS.append((tuple(arr), typ))
-    TEST_ARRAYS.append((np.array(arr), typ))
-    TEST_ARRAYS.append((np.array(arr).reshape(2, 2), typ))
-
-# Consistency with numpy upcasting
-TEST_ARRAYS.append(([3, 'hello'], 'character'))
+    if typ != 'character':
+        arr = [val] * 4
+        TEST_ARRAYS.append((arr, typ))
+        TEST_ARRAYS.append((tuple(arr), typ))
+        TEST_ARRAYS.append((np.array(arr), typ))
+        TEST_ARRAYS.append((np.array(arr).reshape(2, 2), typ))
 
 
 # Unsupported
 TEST_UNSUPPORTED = [
+    np.array(['hi', 'hello']),  # no arrays of strings
     np.array([3, 'hello'], dtype=object),
     lambda x: x**2,
     {0: 0},
