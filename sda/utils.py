@@ -4,6 +4,8 @@ from datetime import datetime
 import re
 import time
 
+import numpy as np
+
 from .exceptions import BadSDAFile
 
 
@@ -67,6 +69,31 @@ def get_date_str(dt=None):
         fmt = DATE_FORMAT
     date_str = dt.strftime(fmt)
     return date_str
+
+
+def infer_record_type(obj):
+    """ Infer record type of ``obj`` or None if ``obj`` is not supported.
+
+    Supported types are 'numeric', 'bool', and 'character'.
+
+    """
+
+    if np.isscalar(obj):
+        check = isinstance
+    else:
+        check = issubclass
+        obj = np.asarray(obj).dtype.type
+
+    if check(obj, (bool, np.bool_)):
+        return 'logical'
+
+    if check(obj, (int, float, complex, np.number)):
+        return 'numeric'
+
+    if check(obj, str):  # Numpy strings are also str
+        return 'character'
+
+    return None
 
 
 def is_valid_date(date_str):

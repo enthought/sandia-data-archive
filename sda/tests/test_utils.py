@@ -1,12 +1,14 @@
 import datetime
 import unittest
 
+import numpy as np
+
 from sda.exceptions import BadSDAFile
 from sda.testing import BAD_ATTRS, GOOD_ATTRS, temporary_h5file
 from sda.utils import (
     error_if_bad_attr, error_if_bad_header, error_if_not_writable,
-    get_date_str, is_valid_date, is_valid_file_format, is_valid_format_version,
-    is_valid_writable, write_header
+    get_date_str, infer_record_type, is_valid_date, is_valid_file_format,
+    is_valid_format_version, is_valid_writable, write_header
 )
 
 
@@ -103,3 +105,75 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(attrs['FormatVersion'], '1.0')
             self.assertEqual(attrs['Writable'], 'yes')
             self.assertEqual(attrs['Created'], attrs['Modified'])
+
+    def test_infer_record_type(self):
+
+        # Simulate 'long' type to simplify code below
+        try:
+            long(0)
+        except NameError:
+            long = int
+
+        float_val = 3.14159
+        int_val = 3
+        bool_val = True
+        complex_val = 1.23 + 4.56j
+        str_val = 'foo'
+        unicode_val = u'foo'
+
+        # scalars
+        scalars = [
+            (float_val, 'numeric'),
+            (np.float32(float_val), 'numeric'),
+            (np.float64(float_val), 'numeric'),
+            (int_val, 'numeric'),
+            (long(int_val), 'numeric'),
+            (np.int8(int_val), 'numeric'),
+            (np.int16(int_val), 'numeric'),
+            (np.int32(int_val), 'numeric'),
+            (np.int64(int_val), 'numeric'),
+            (np.uint8(int_val), 'numeric'),
+            (np.uint16(int_val), 'numeric'),
+            (np.uint32(int_val), 'numeric'),
+            (np.uint64(int_val), 'numeric'),
+            (complex_val, 'numeric'),
+            (np.complex64(complex_val), 'numeric'),
+            (np.complex128(complex_val), 'numeric'),
+            (bool_val, 'logical'),
+            (np.bool_(bool_val), 'logical'),
+            (str_val, 'character'),
+            (np.str_(str_val), 'character'),
+            (np.unicode_(unicode_val), 'character'),
+        ]
+
+        # lists, tuples, and arrays
+        arrays = []
+        for val, typ in scalars:
+            arr = [val] * 4
+            arrays.append((arr, typ))
+            arrays.append((tuple(arr), typ))
+            arrays.append((np.array(arr), typ))
+            arrays.append((np.array(arr).reshape(2, 2), typ))
+
+        # Consistency with numpy upcasting
+        arrays.append(([3, 'hello'], 'character'))
+
+        # array scalars
+        scalars += [(np.array(val), typ) for val, typ in scalars]
+
+        for val, typ in scalars + arrays:
+            msg = 'infer_record_type({}) != {}'.format(val, typ)
+            self.assertEqual(infer_record_type(val), typ, msg=msg)
+
+        # Unsupported
+        unsupported = [
+            np.array([3, 'hello'], dtype=object),
+            lambda x: x**2,
+            {0: 0},
+            {0},
+            None,
+        ]
+
+        for val in unsupported:
+            msg = 'infer_record_type({}) is not None'.format(val)
+            self.assertIsNone(infer_record_type(val), msg=msg)
