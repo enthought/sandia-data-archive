@@ -123,7 +123,7 @@ class TestSDAFileInsert(unittest.TestCase):
             with self.assertRaises(IOError):
                 sda_file.insert('test', [1, 2, 3])
 
-    def test_write_off(self):
+    def test_no_write(self):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
             sda_file.Writable = 'no'
@@ -297,3 +297,51 @@ class TestSDAFileInsert(unittest.TestCase):
             self.assertEqual(ds.attrs['Empty'], empty)
             if empty == 'no':
                 assert_equal(ds[()], expected)
+
+
+class TestSDAFileDescribe(unittest.TestCase):
+
+    def test_read_only(self):
+        with temporary_h5file() as h5file:
+            name = h5file.filename
+            h5file.attrs.update(GOOD_ATTRS)
+            h5file.close()
+            sda_file = SDAFile(name, 'r')
+
+            with self.assertRaises(IOError):
+                sda_file.describe('test', 'a test')
+
+    def test_no_write(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            sda_file.Writable = 'no'
+            with self.assertRaises(IOError):
+                sda_file.describe('test', 'a test')
+
+    def test_invalid_label(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            with self.assertRaises(ValueError):
+                sda_file.describe('test/', 'a test')
+
+            with self.assertRaises(ValueError):
+                sda_file.describe('test\\', 'a test')
+
+    def test_missing_label(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            with self.assertRaises(ValueError):
+                sda_file.describe('test', 'a test')
+
+    def test_happy_path(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            with sda_file._h5file('a') as h5file:
+                h5file.attrs['Updated'] = 'Unmodifed'
+            sda_file.insert('test', [1, 2, 3])
+            sda_file.describe('test', 'second')
+            with sda_file._h5file('r') as h5file:
+                self.assertEqual(h5file['test'].attrs['Description'], 'second')
+
+            # Make sure the 'Updated' attr gets updated
+            self.assertNotEqual(sda_file.Updated, 'Unmodified')
