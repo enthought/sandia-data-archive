@@ -142,10 +142,10 @@ class SDAFile(object):
 
         Note
         ----
-        This relies on numpy to upcast inhomogeneous data to homogeneous type.
-        This may result in casting to a supported type. It is the
-        responsibility of the caller to homogenize the input data if the numpy
-        casting machinery is not sufficient for the input data.
+        This relies on numpy to cast inhomogeneous array-like data to a
+        homogeneous type.  It is the responsibility of the caller to homogenize
+        the input data if the numpy casting machinery is not sufficient for the
+        input data.
 
         """
         if self._mode not in WRITE_MODES:
@@ -155,16 +155,16 @@ class SDAFile(object):
         if not isinstance(deflate, int) or not 0 <= deflate <= 9:
             msg = "'deflate' must be an integer from 0 to 9"
             raise ValueError(msg)
+        if '/' in label or '\\' in label:
+            msg = r"label cannot contain '/' or '\'"
+            raise ValueError(msg)
+        if self._is_existing_label(label):
+            msg = "Label '{}' already exists. Call 'replace' to replace it."
+            raise ValueError(msg.format(label))
         record_type, cast_obj = infer_record_type(data)
         if record_type is None:
             msg = "{!r} is not a supported type".format(data)
             raise ValueError(data)
-        if '/' in label or '\\' in label:
-            msg = r"label cannot contain '/' or '\'"
-            raise ValueError(msg)
-        if self._label_exists(label):
-            msg = "Label '{}' already exists. Call 'replace' to replace it."
-            raise ValueError(msg.format(label))
 
         if record_type == 'numeric':
             self._insert_numeric(label, cast_obj, description, deflate)
@@ -230,7 +230,7 @@ class SDAFile(object):
 
         self._insert_data(label, data, description, deflate, 'logical')
 
-    def _label_exists(self, label):
+    def _is_existing_label(self, label):
         with self._h5file('r') as h5file:
             return label in h5file
 
