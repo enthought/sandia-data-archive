@@ -47,8 +47,8 @@ def error_if_bad_header(h5file):
     # Created flag
     error_if_bad_attr(h5file, 'Created', is_valid_date)
 
-    # Modified flag
-    error_if_bad_attr(h5file, 'Modified', is_valid_date)
+    # Updated flag
+    error_if_bad_attr(h5file, 'Updated', is_valid_date)
 
 
 def error_if_not_writable(h5file):
@@ -145,4 +145,4 @@ def write_header(attrs):
     attrs['Writable'] = 'yes'
     date_str = get_date_str()
     attrs['Created'] = date_str
-    attrs['Modified'] = date_str
+    attrs['Updated'] = date_str

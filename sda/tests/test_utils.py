@@ -108,7 +108,7 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(attrs['FileFormat'], 'SDA')
             self.assertEqual(attrs['FormatVersion'], '1.0')
             self.assertEqual(attrs['Writable'], 'yes')
-            self.assertEqual(attrs['Created'], attrs['Modified'])
+            self.assertEqual(attrs['Created'], attrs['Updated'])
 
     def test_infer_record_type(self):
 

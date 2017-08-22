@@ -113,8 +113,8 @@ class SDAFile(object):
         return self._get_attr('Created')
 
     @property
-    def Modified(self):
-        return self._get_attr('Modified')
+    def Updated(self):
+        return self._get_attr('Updated')
 
     # Public
     def insert(self, label, data, description='', deflate=0):
@@ -177,7 +177,7 @@ class SDAFile(object):
             msg = "Unrecognized record type '{}'".format(record_type)
             raise RuntimeError(msg)
 
-        self._update_modified()
+        self._update_timestamp()
 
     # Private
     def _insert_data(self, label, data, description, deflate, record_type):
@@ -246,6 +246,6 @@ class SDAFile(object):
         with self._h5file('r') as h5file:
             return h5file.attrs[attr]
 
-    def _update_modified(self):
+    def _update_timestamp(self):
         with self._h5file('a') as h5file:
-            h5file.attrs['Modified'] = get_date_str()
+            h5file.attrs['Updated'] = get_date_str()

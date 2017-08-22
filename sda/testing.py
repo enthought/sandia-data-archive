@@ -12,7 +12,7 @@ BAD_ATTRS = {
     'FormatVersion': '0.5',
     'Writable': 'nope',
     'Created': '2017-01-01 01:23:45',
-    'Modified': '2017-01-01 01:23:45',
+    'Updated': '2017-01-01 01:23:45',
 }
 
 
@@ -21,7 +21,7 @@ GOOD_ATTRS = {
     'FormatVersion': '1.1',
     'Writable': 'yes',
     'Created': '18-Aug-2017 01:23:45',
-    'Modified': '18-Aug-2017 01:23:45',
+    'Updated': '18-Aug-2017 01:23:45',
 }
 
 
