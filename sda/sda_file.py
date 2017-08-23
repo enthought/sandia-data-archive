@@ -15,10 +15,10 @@ import h5py
 import numpy as np
 
 from .utils import (
-    coerce_character, coerce_logical, coerce_numeric, error_if_bad_header,
-    error_if_not_writable, extract_character, extract_logical, extract_numeric,
-    get_date_str, get_empty_for_type, infer_record_type, is_valid_writable,
-    write_header,
+    coerce_character, coerce_complex, coerce_logical, coerce_numeric,
+    error_if_bad_header, error_if_not_writable, extract_character,
+    extract_complex, extract_logical, extract_numeric, get_date_str,
+    get_empty_for_type, infer_record_type, is_valid_writable, write_header,
 )
 
 
@@ -163,10 +163,22 @@ class SDAFile(object):
             if g.attrs['Empty'] == 'yes':
                 return get_empty_for_type(record_type)
             ds = g[label]
+            complex_flag = ds.attrs.get('Complex', 'no')
+            shape = ds.attrs.get('ArrayShape')
             data = ds[()]
 
         if record_type == 'numeric':
-            extracted = extract_numeric(data)
+            if complex_flag == 'yes':
+                extracted = extract_complex(data, shape)
+                # squeeze leading dimension if this looks like a 1D array
+                if extracted.ndim == 2 and extracted.shape[0] == 1:
+                    # if it's a scalar, go all the way
+                    if extracted.shape[1] == 1:
+                        extracted = extracted[0, 0]
+                    else:
+                        extracted = np.squeeze(extracted, axis=0)
+            else:
+                extracted = extract_numeric(data)
         elif record_type == 'logical':
             extracted = extract_logical(data)
         elif record_type == 'character':
@@ -215,8 +227,15 @@ class SDAFile(object):
             msg = "{!r} is not a supported type".format(data)
             raise ValueError(data)
 
+        is_complex = False
+        original_shape = None
         if record_type == 'numeric':
-            cast_obj = coerce_numeric(cast_obj)
+            if np.iscomplexobj(cast_obj):
+                is_complex = True
+                original_shape = np.atleast_2d(cast_obj).shape
+                cast_obj = coerce_complex(cast_obj)
+            else:
+                cast_obj = coerce_numeric(cast_obj)
         elif record_type == 'logical':
             cast_obj = coerce_logical(cast_obj)
         elif record_type == 'character':
@@ -226,11 +245,15 @@ class SDAFile(object):
             msg = "Unrecognized record type '{}'".format(record_type)
             raise RuntimeError(msg)
 
-        self._insert_data(label, cast_obj, description, deflate, record_type)
+        self._insert_data(
+            label, cast_obj, description, deflate, record_type, is_complex,
+            original_shape
+        )
         self._update_timestamp()
 
     # Private
-    def _insert_data(self, label, data, description, deflate, record_type):
+    def _insert_data(self, label, data, description, deflate, record_type,
+                     is_complex, original_shape):
         """ Insert coerced data of a given type into the h5 file.
 
         """
@@ -261,6 +284,9 @@ class SDAFile(object):
             )
             ds.attrs['RecordType'] = record_type
             ds.attrs['Empty'] = empty
+            ds.attrs['Complex'] = 'yes' if is_complex else 'no'
+            if is_complex:
+                ds.attrs['ArrayShape'] = original_shape
 
     def _is_existing_label(self, label):
         with self._h5file('r') as h5file:

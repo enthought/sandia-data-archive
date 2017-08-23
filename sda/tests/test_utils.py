@@ -11,9 +11,9 @@ from sda.testing import (
     temporary_h5file
 )
 from sda.utils import (
-    coerce_character, coerce_logical, coerce_numeric,
+    coerce_character, coerce_complex, coerce_logical, coerce_numeric,
     error_if_bad_attr, error_if_bad_header, error_if_not_writable,
-    extract_character, extract_logical, extract_numeric,
+    extract_character, extract_complex, extract_logical, extract_numeric,
     get_date_str, get_empty_for_type, infer_record_type, is_valid_date,
     is_valid_file_format, is_valid_format_version, is_valid_writable,
     write_header
@@ -27,6 +27,39 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(coerced.dtype, np.dtype(np.uint8))
         expected = np.array([ord(c) for c in string.printable], np.uint8)
         assert_array_equal(coerced, expected)
+
+    def test_coerce_complex(self):
+
+        data = np.arange(6, dtype=np.complex256)
+        data.imag = -1
+
+        expected = np.array([data.real, data.imag], dtype=np.float128)
+        coerced = coerce_complex(data)
+        self.assertEqual(expected.dtype, coerced.dtype)
+        assert_array_equal(expected, coerced)
+
+        data = data.astype(np.complex128)
+        expected = expected.astype(np.float64)
+        coerced = coerce_complex(data)
+        self.assertEqual(expected.dtype, coerced.dtype)
+        assert_array_equal(expected, coerced)
+
+        data = data.astype(np.complex64)
+        expected = expected.astype(np.float32)
+        coerced = coerce_complex(data)
+        self.assertEqual(expected.dtype, coerced.dtype)
+        assert_array_equal(expected, coerced)
+
+        # Flattened arrays are intrinsically column-major, because MATLAB
+        f_data = data.reshape((2, 3), order='F')
+        coerced = coerce_complex(f_data)
+        self.assertEqual(expected.dtype, coerced.dtype)
+        assert_array_equal(expected, coerced)
+
+        c_data = np.ascontiguousarray(f_data)
+        coerced = coerce_complex(c_data)
+        self.assertEqual(expected.dtype, coerced.dtype)
+        assert_array_equal(expected, coerced)
 
     def test_coerce_logical(self):
         self.assertEqual(coerce_logical(True), 1)
@@ -99,6 +132,33 @@ class TestUtils(unittest.TestCase):
         stored = np.array([ord(c) for c in expected], np.uint8)
         extracted = extract_character(stored)
         self.assertEqual(extracted, expected)
+
+    def test_extract_complex(self):
+
+        expected = np.arange(6, dtype=np.complex256)
+        expected.imag = -1
+
+        stored = np.array([expected.real, expected.imag], dtype=np.float128)
+        extracted = extract_complex(stored, (6,))
+        self.assertEqual(expected.dtype, extracted.dtype)
+        assert_array_equal(expected, extracted)
+
+        expected = expected.astype(np.complex128)
+        stored = stored.astype(np.float64)
+        extracted = extract_complex(stored, (6,))
+        self.assertEqual(expected.dtype, extracted.dtype)
+        assert_array_equal(expected, extracted)
+
+        expected = expected.astype(np.complex64)
+        stored = stored.astype(np.float32)
+        extracted = extract_complex(stored, (6,))
+        self.assertEqual(expected.dtype, extracted.dtype)
+        assert_array_equal(expected, extracted)
+
+        expected_2d = expected.reshape((2, 3), order='F')
+        extracted = extract_complex(stored, (2, 3))
+        self.assertEqual(expected_2d.dtype, extracted.dtype)
+        assert_array_equal(expected_2d, extracted)
 
     def test_extract_logical(self):
         self.assertEqual(extract_logical(1), True)
