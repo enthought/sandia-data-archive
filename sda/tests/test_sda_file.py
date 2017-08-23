@@ -158,13 +158,20 @@ class TestSDAFileInsert(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sda_file.insert('test', [1, 2, 3])
 
-    def test_character_scalar(self):
-        values = (obj for (obj, typ) in TEST_SCALARS if typ == 'character')
+    def test_timestamp_update(self):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
             with sda_file._h5file('a') as h5file:
                 h5file.attrs['Updated'] = 'Unmodified'
 
+            sda_file.insert('test', [0, 1, 2])
+            self.assertNotEqual(sda_file.Updated, 'Unmodified')
+
+    def test_character_scalar(self):
+        values = (obj for (obj, typ) in TEST_SCALARS if typ == 'character')
+
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
             for i, obj in enumerate(values):
                 label = 'test' + str(i)
                 deflate = i % 10
@@ -173,9 +180,6 @@ class TestSDAFileInsert(unittest.TestCase):
                 self.assertRecord(
                     sda_file, 'character', label, deflate, 'no', expected
                 )
-
-            # Make sure the 'Updated' attr gets updated
-            self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
             label = 'test_empty'
             deflate = 0
@@ -188,8 +192,6 @@ class TestSDAFileInsert(unittest.TestCase):
         values = (obj for (obj, typ) in TEST_ARRAYS if typ == 'logical')
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
-            with sda_file._h5file('a') as h5file:
-                h5file.attrs['Updated'] = 'Unmodified'
 
             for i, obj in enumerate(values):
                 label = 'test' + str(i)
@@ -200,15 +202,10 @@ class TestSDAFileInsert(unittest.TestCase):
                     sda_file, 'logical', label, deflate, 'no', expected
                 )
 
-            # Make sure the 'Updated' attr gets updated
-            self.assertNotEqual(sda_file.Updated, 'Unmodified')
-
     def test_logical_scalar(self):
         values = (obj for (obj, typ) in TEST_SCALARS if typ == 'logical')
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
-            with sda_file._h5file('a') as h5file:
-                h5file.attrs['Updated'] = 'Unmodified'
 
             for i, obj in enumerate(values):
                 label = 'test' + str(i)
@@ -219,15 +216,10 @@ class TestSDAFileInsert(unittest.TestCase):
                     sda_file, 'logical', label, deflate, 'no', expected
                 )
 
-            # Make sure the 'Updated' attr gets updated
-            self.assertNotEqual(sda_file.Updated, 'Unmodified')
-
     def test_numeric_array(self):
         values = (obj for (obj, typ) in TEST_ARRAYS if typ == 'numeric')
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
-            with sda_file._h5file('a') as h5file:
-                h5file.attrs['Updated'] = 'Unmodified'
 
             for i, obj in enumerate(values):
                 label = 'test' + str(i)
@@ -238,9 +230,6 @@ class TestSDAFileInsert(unittest.TestCase):
                     sda_file, 'numeric', label, deflate, 'no', expected
                 )
 
-            # Make sure the 'Updated' attr gets updated
-            self.assertNotEqual(sda_file.Updated, 'Unmodified')
-
             label = 'test_empty'
             deflate = 0
             sda_file.insert(label, [], label, deflate)
@@ -250,8 +239,6 @@ class TestSDAFileInsert(unittest.TestCase):
         values = (obj for (obj, typ) in TEST_SCALARS if typ == 'numeric')
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
-            with sda_file._h5file('a') as h5file:
-                h5file.attrs['Updated'] = 'Unmodified'
 
             for i, obj in enumerate(values):
                 label = 'test' + str(i)
@@ -260,9 +247,6 @@ class TestSDAFileInsert(unittest.TestCase):
                 self.assertRecord(
                     sda_file, 'numeric', label, deflate, 'no', obj
                 )
-
-            # Make sure the 'Updated' attr gets updated
-            self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
             label = 'test_nan'
             deflate = 0
@@ -338,6 +322,7 @@ class TestSDAFileDescribe(unittest.TestCase):
             sda_file = SDAFile(file_path, 'w')
             with sda_file._h5file('a') as h5file:
                 h5file.attrs['Updated'] = 'Unmodifed'
+
             sda_file.insert('test', [1, 2, 3])
             sda_file.describe('test', 'second')
             with sda_file._h5file('r') as h5file:
