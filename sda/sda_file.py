@@ -113,10 +113,32 @@ class SDAFile(object):
         return self._get_attr('Created')
 
     @property
-    def Modified(self):
-        return self._get_attr('Modified')
+    def Updated(self):
+        return self._get_attr('Updated')
 
     # Public
+    def describe(self, label, description=''):
+        """ Change the description of a data entry.
+
+        Parameters
+        ----------
+        label : str
+            The data label.
+        description : str
+            A description to accompany the data
+
+        Raises
+        ------
+        ValueError if the label contains invalid characters
+        ValueError if the label does not exist
+
+        """
+        self._validate_can_write()
+        self._validate_label(label, must_exist=True)
+        with self._h5file('a') as h5file:
+            h5file[label].attrs['Description'] = description
+        self._update_timestamp()
+
     def insert(self, label, data, description='', deflate=0):
         """ Insert data into an SDA file.
 
@@ -137,7 +159,7 @@ class SDAFile(object):
         Raises
         ------
         ValueError if the data is of an unsupported type
-        ValueError if the label is invalid
+        ValueError if the label contains invalid characters
         ValueError if the label exists
 
         Note
@@ -148,19 +170,11 @@ class SDAFile(object):
         input data.
 
         """
-        if self._mode not in WRITE_MODES:
-            raise IOError("File is not writable")
-        if self.Writable == 'no':
-            raise IOError("'Writable' flag is 'no'")
+        self._validate_can_write()
+        self._validate_label(label, can_exist=False)
         if not isinstance(deflate, int) or not 0 <= deflate <= 9:
             msg = "'deflate' must be an integer from 0 to 9"
             raise ValueError(msg)
-        if '/' in label or '\\' in label:
-            msg = r"label cannot contain '/' or '\'"
-            raise ValueError(msg)
-        if self._is_existing_label(label):
-            msg = "Label '{}' already exists. Call 'replace' to replace it."
-            raise ValueError(msg.format(label))
         record_type, cast_obj = infer_record_type(data)
         if record_type is None:
             msg = "{!r} is not a supported type".format(data)
@@ -177,7 +191,7 @@ class SDAFile(object):
             msg = "Unrecognized record type '{}'".format(record_type)
             raise RuntimeError(msg)
 
-        self._update_modified()
+        self._update_timestamp()
 
     # Private
     def _insert_data(self, label, data, description, deflate, record_type):
@@ -246,6 +260,25 @@ class SDAFile(object):
         with self._h5file('r') as h5file:
             return h5file.attrs[attr]
 
-    def _update_modified(self):
+    def _validate_can_write(self):
+        """ Validate file mode and 'Writable' attr allow writing. """
+        if self._mode not in WRITE_MODES:
+            raise IOError("File is not writable")
+        if self.Writable == 'no':
+            raise IOError("'Writable' flag is 'no'")
+
+    def _validate_label(self, label, can_exist=True, must_exist=False):
+        if '/' in label or '\\' in label:
+            msg = r"label cannot contain '/' or '\'"
+            raise ValueError(msg)
+        label_exists = self._is_existing_label(label)
+        if not can_exist and label_exists:
+            msg = "Label '{}' already exists."
+            raise ValueError(msg)
+        if must_exist and not label_exists:
+            msg = "Label item '{}' does not exist".format(label)
+            raise ValueError(msg)
+
+    def _update_timestamp(self):
         with self._h5file('a') as h5file:
-            h5file.attrs['Modified'] = get_date_str()
+            h5file.attrs['Updated'] = get_date_str()
