@@ -1,4 +1,5 @@
 rem install python packages
+pip install --cache-dir C:/egg_cache packaging
 pip install --cache-dir C:/egg_cache nose
 pip install --cache-dir C:/egg_cache coverage==3.7.1
 pip install --cache-dir C:/egg_cache h5py
