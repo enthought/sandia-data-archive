@@ -105,7 +105,7 @@ class SDAFile(object):
             raise ValueError("File is not writable.")
         if not is_valid_writable(value):
             raise ValueError("Must be 'yes' or 'no'")
-        with self._h5file('w') as h5file:
+        with self._h5file('a') as h5file:
             h5file.attrs['Writable'] = value
 
     @property

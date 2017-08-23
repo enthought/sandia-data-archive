@@ -111,6 +111,33 @@ class TestSDAFileInit(unittest.TestCase):
                 self.assertAttrs(sda_file)
 
 
+class TestSDAFileProperties(unittest.TestCase):
+
+    def test_file_properties(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            self.assertEqual(sda_file.mode, 'w')
+            self.assertEqual(sda_file.name, file_path)
+
+    def test_set_writable(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            self.assertEqual(sda_file.Writable, 'yes')
+            sda_file.Writable = 'no'
+            self.assertEqual(sda_file.Writable, 'no')
+
+            with self.assertRaises(ValueError):
+                sda_file.Writable = True
+
+            with self.assertRaises(ValueError):
+                sda_file.Writable = False
+
+            sda_file = SDAFile(file_path, 'r')
+
+            with self.assertRaises(ValueError):
+                sda_file.Writable = 'yes'
+
+
 class TestSDAFileInsert(unittest.TestCase):
 
     def test_read_only(self):
