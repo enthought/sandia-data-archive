@@ -15,8 +15,10 @@ import h5py
 import numpy as np
 
 from .utils import (
-    error_if_bad_header, error_if_not_writable, get_date_str,
-    infer_record_type, is_valid_writable, write_header,
+    coerce_character, coerce_logical, coerce_numeric, error_if_bad_header,
+    error_if_not_writable, extract_character, extract_logical, extract_numeric,
+    get_date_str, get_empty_for_type, infer_record_type, is_valid_writable,
+    write_header,
 )
 
 
@@ -139,6 +141,40 @@ class SDAFile(object):
             h5file[label].attrs['Description'] = description
         self._update_timestamp()
 
+    def extract(self, label):
+        """ Extract data from an SDA file.
+
+        Parameters
+        ----------
+        label : str
+            The data label.
+
+        Raises
+        ------
+        ValueError if the label contains invalid characters
+        ValueError if the label does not exist
+
+        """
+        self._validate_can_write()
+        self._validate_label(label, must_exist=True)
+        with self._h5file('r') as h5file:
+            g = h5file[label]
+            record_type = g.attrs['RecordType']
+            # short circuit empty archives to avoid unnecessarily loading data.
+            if g.attrs['Empty'] == 'yes':
+                return get_empty_for_type(record_type)
+            ds = g[label]
+            data = ds[()]
+
+        if record_type == 'numeric':
+            extracted = extract_numeric(data)
+        elif record_type == 'logical':
+            extracted = extract_logical(data)
+        elif record_type == 'character':
+            extracted = extract_character(data)
+
+        return extracted
+
     def insert(self, label, data, description='', deflate=0):
         """ Insert data into an SDA file.
 
@@ -181,23 +217,22 @@ class SDAFile(object):
             raise ValueError(data)
 
         if record_type == 'numeric':
-            self._insert_numeric(label, cast_obj, description, deflate)
+            cast_obj = coerce_numeric(cast_obj)
         elif record_type == 'logical':
-            self._insert_logical(label, cast_obj, description, deflate)
+            cast_obj = coerce_logical(cast_obj)
         elif record_type == 'character':
-            self._insert_character(label, cast_obj, description, deflate)
+            cast_obj = coerce_character(cast_obj)
         else:
             # Should not happen
             msg = "Unrecognized record type '{}'".format(record_type)
             raise RuntimeError(msg)
 
+        self._insert_data(label, cast_obj, description, deflate, record_type)
         self._update_timestamp()
 
     # Private
     def _insert_data(self, label, data, description, deflate, record_type):
-        """ Worker for the _insert methods
-
-        This expects the data to be a scalar or cast as a numpy array.
+        """ Insert coerced data of a given type into the h5 file.
 
         """
         empty = 'no'
@@ -227,22 +262,6 @@ class SDAFile(object):
             )
             ds.attrs['RecordType'] = record_type
             ds.attrs['Empty'] = empty
-
-    def _insert_character(self, label, data, description, deflate):
-        data = np.frombuffer(data.encode('ascii'), 'S1').view('uint8')
-        self._insert_data(label, data, description, deflate, 'character')
-
-    def _insert_numeric(self, label, data, description, deflate):
-        self._insert_data(label, data, description, deflate, 'numeric')
-
-    def _insert_logical(self, label, data, description, deflate):
-        # Coerce the stored type to uint8
-        if np.isscalar(data) or data.shape == ():
-            data = 1 if data else 0
-        else:
-            data = data.astype(np.uint8).clip(0, 1)
-
-        self._insert_data(label, data, description, deflate, 'logical')
 
     def _is_existing_label(self, label):
         with self._h5file('r') as h5file:

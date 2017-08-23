@@ -1,4 +1,5 @@
 import datetime
+import string
 import unittest
 
 import numpy as np
@@ -10,13 +11,46 @@ from sda.testing import (
     temporary_h5file
 )
 from sda.utils import (
+    coerce_character, coerce_logical, coerce_numeric,
     error_if_bad_attr, error_if_bad_header, error_if_not_writable,
-    get_date_str, infer_record_type, is_valid_date, is_valid_file_format,
-    is_valid_format_version, is_valid_writable, write_header
+    extract_character, extract_logical, extract_numeric,
+    get_date_str, get_empty_for_type, infer_record_type, is_valid_date,
+    is_valid_file_format, is_valid_format_version, is_valid_writable,
+    write_header
 )
 
 
 class TestUtils(unittest.TestCase):
+
+    def test_coerce_character(self):
+        coerced = coerce_character(string.printable)
+        self.assertEqual(coerced.dtype, np.dtype(np.uint8))
+        expected = np.array([ord(c) for c in string.printable], np.uint8)
+        assert_array_equal(coerced, expected)
+
+    def test_coerce_logical(self):
+        self.assertEqual(coerce_logical(True), 1)
+        self.assertEqual(coerce_logical(False), 0)
+        self.assertEqual(coerce_logical(np.array(True)), 1)
+        self.assertEqual(coerce_logical(np.array(False)), 0)
+        self.assertEqual(coerce_logical(np.bool_(True)), 1)
+        self.assertEqual(coerce_logical(np.bool_(False)), 0)
+
+        x = np.array([True, False, True, True])
+        coerced = coerce_logical(x)
+        self.assertEqual(coerced.dtype, np.dtype(np.uint8))
+        assert_array_equal(coerced, [1, 0, 1, 1])
+
+    def test_coerce_numeric(self):
+        for data, typ in TEST_SCALARS:
+            if typ == 'numeric':
+                self.assertEqual(coerce_numeric(data), data)
+
+        for data, typ in TEST_ARRAYS:
+            if typ == 'numeric' and isinstance(data, np.ndarray):
+                coerced = coerce_numeric(data)
+                assert_array_equal(coerced, data)
+                self.assertEqual(coerced.dtype, data.dtype)
 
     def test_error_if_bad_attr(self):
         with temporary_h5file() as h5file:
@@ -60,6 +94,33 @@ class TestUtils(unittest.TestCase):
             with self.assertRaises(IOError):
                 error_if_not_writable(h5file)
 
+    def test_extract_character(self):
+        expected = string.printable
+        stored = np.array([ord(c) for c in expected], np.uint8)
+        extracted = extract_character(stored)
+        self.assertEqual(extracted, expected)
+
+    def test_extract_logical(self):
+        self.assertEqual(extract_logical(1), True)
+        self.assertEqual(extract_logical(0), False)
+
+        expected = np.array([True, False, True, True], dtype=bool)
+        stored = np.array([1, 0, 1, 1], dtype=np.uint8)
+        extracted = extract_logical(stored)
+        self.assertEqual(extracted.dtype, expected.dtype)
+        assert_array_equal(extracted, expected)
+
+    def test_extract_numeric(self):
+        for data, typ in TEST_SCALARS:
+            if typ == 'numeric':
+                self.assertEqual(extract_numeric(data), data)
+
+        for data, typ in TEST_ARRAYS:
+            if typ == 'numeric' and isinstance(data, np.ndarray):
+                extracted = extract_numeric(data)
+                assert_array_equal(extracted, data)
+                self.assertEqual(data.dtype, extracted.dtype)
+
     def test_get_date_str(self):
         dt = datetime.datetime(2017, 8, 18, 2, 22, 11)
         date_str = get_date_str(dt)
@@ -74,6 +135,13 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(date_str, '18-Aug-2017')
 
         date_str = get_date_str()  # valid without arguments
+
+    def test_get_empty_for_type(self):
+        self.assertEqual('', get_empty_for_type('character'))
+        assert_array_equal(
+            np.array([], dtype=bool), get_empty_for_type('logical')
+        )
+        self.assertTrue(np.isnan(get_empty_for_type('numeric')))
 
     def test_is_valid_date(self):
         self.assertTrue(is_valid_date('18-Aug-2017 02:22:11'))

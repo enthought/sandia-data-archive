@@ -19,6 +19,26 @@ DATE_FORMAT_SHORT = "%d-%b-%Y"
 VERSION_1_RE = re.compile('1\.\d+')
 
 
+def coerce_character(data):
+    """ Coerce 'character' data to uint8 stored form. """
+    data = np.frombuffer(data.encode('ascii'), np.uint8)
+    return data
+
+
+def coerce_logical(data):
+    """ Coerce 'logical' data to uint8 stored form. """
+    if np.isscalar(data) or data.shape == ():
+        data = 1 if data else 0
+    else:
+        data = data.astype(np.uint8).clip(0, 1)
+    return data
+
+
+def coerce_numeric(data):
+    """ Coerce 'numeric' data to stored form. """
+    return data
+
+
 def error_if_bad_attr(h5file, attr, is_valid):
     """ Raise BadSDAFile error if h5file has a bad SDA attribute. """
     name = h5file.filename
@@ -59,6 +79,26 @@ def error_if_not_writable(h5file):
         raise IOError(msg)
 
 
+def extract_logical(data):
+    """ Extract 'logical' data from uint8 stored form. """
+    if np.isscalar(data):
+        data = bool(data)
+    else:
+        data = data.astype(bool)
+    return data
+
+
+def extract_numeric(data):
+    """ Extract 'numeric' data from stored form. """
+    return data
+
+
+def extract_character(data):
+    """ Extract 'character' data from uint8 stored form. """
+    data = data.tobytes().decode('ascii')
+    return data
+
+
 def get_date_str(dt=None):
     """ Get a valid date string from a datetime, or current time. """
     if dt is None:
@@ -69,6 +109,25 @@ def get_date_str(dt=None):
         fmt = DATE_FORMAT
     date_str = dt.strftime(fmt)
     return date_str
+
+
+def get_empty_for_type(record_type):
+    """ Get the empty value for a record.
+
+    Raises
+    ------
+    ValueError if ``record_type`` does not have an empty entry.
+
+    """
+    if record_type == 'numeric':
+        return np.nan
+    elif record_type == 'character':
+        return ''
+    elif record_type == 'logical':
+        return np.array([], dtype=bool)
+    else:
+        msg = "Record type '{}' cannot be empty".format(record_type)
+        raise ValueError(msg)
 
 
 def infer_record_type(obj):
