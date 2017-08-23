@@ -155,7 +155,8 @@ class TestUtils(unittest.TestCase):
 
     def test_is_valid_format_version(self):
         self.assertTrue(is_valid_format_version('1.0'))
-        self.assertTrue(is_valid_format_version('1.2'))
+        self.assertTrue(is_valid_format_version('1.1'))
+        self.assertFalse(is_valid_format_version('1.2'))
         self.assertFalse(is_valid_format_version('0.2'))
         self.assertFalse(is_valid_format_version('2.0'))
 
@@ -174,7 +175,7 @@ class TestUtils(unittest.TestCase):
 
             attrs = h5file.attrs
             self.assertEqual(attrs['FileFormat'], 'SDA')
-            self.assertEqual(attrs['FormatVersion'], '1.0')
+            self.assertEqual(attrs['FormatVersion'], '1.1')
             self.assertEqual(attrs['Writable'], 'yes')
             self.assertEqual(attrs['Created'], attrs['Updated'])
 

@@ -28,8 +28,7 @@ WRITE_MODES = ('w', 'w-', 'x', 'a')
 class SDAFile(object):
     """ Read, write, inspect, and manipulate Sandia Data Archive files.
 
-    This supports version 1.0 of the Sandai Data Archive format, defined at
-    http://prod.sandia.gov/techlib/access-control.cgi/2015/151118.pdf.
+    This supports version 1.1 of the Sandai Data Archive format.
 
     """
 
