@@ -123,6 +123,8 @@ def get_empty_for_type(record_type):
         return np.nan
     elif record_type == 'character':
         return ''
+    elif record_type == 'logical':
+        return np.array([], dtype=bool)
     else:
         msg = "Record type '{}' cannot be empty".format(record_type)
         raise ValueError(msg)

@@ -14,8 +14,9 @@ from sda.utils import (
     coerce_character, coerce_logical, coerce_numeric,
     error_if_bad_attr, error_if_bad_header, error_if_not_writable,
     extract_character, extract_logical, extract_numeric,
-    get_date_str, infer_record_type, is_valid_date, is_valid_file_format,
-    is_valid_format_version, is_valid_writable, write_header
+    get_date_str, get_empty_for_type, infer_record_type, is_valid_date,
+    is_valid_file_format, is_valid_format_version, is_valid_writable,
+    write_header
 )
 
 
@@ -134,6 +135,13 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(date_str, '18-Aug-2017')
 
         date_str = get_date_str()  # valid without arguments
+
+    def test_get_empty_for_type(self):
+        self.assertEqual('', get_empty_for_type('character'))
+        assert_array_equal(
+            np.array([], dtype=bool), get_empty_for_type('logical')
+        )
+        self.assertTrue(np.isnan(get_empty_for_type('numeric')))
 
     def test_is_valid_date(self):
         self.assertTrue(is_valid_date('18-Aug-2017 02:22:11'))

@@ -230,6 +230,10 @@ class TestSDAFileInsert(unittest.TestCase):
                     sda_file, 'logical', label, deflate, 'no', expected
                 )
 
+            arr = np.array([], dtype=bool)
+            sda_file.insert('empty', arr, 'empty')
+            self.assertRecord(sda_file, 'logical', 'empty', 0, 'yes', None)
+
     def test_logical_scalar(self):
         values = (obj for (obj, typ) in TEST_SCALARS if typ == 'logical')
         with temporary_file() as file_path:
