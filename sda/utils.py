@@ -16,7 +16,7 @@ DATE_FORMAT = "%d-%b-%Y %H:%M:%S"
 DATE_FORMAT_SHORT = "%d-%b-%Y"
 
 # Regular expression for version string
-VERSION_1_RE = re.compile('1\.\d+')
+VERSION_1_RE = re.compile(r'1\.(?P<sub>\d+)')
 
 
 def error_if_bad_attr(h5file, attr, is_valid):
@@ -129,8 +129,11 @@ def is_valid_file_format(value):
 
 
 def is_valid_format_version(value):
-    """ Check that version is '1.X' """
-    return VERSION_1_RE.match(value) is not None
+    """ Check that version is '1.X' for X <= 1 """
+    m = VERSION_1_RE.match(value)
+    if m is None:
+        return False
+    return 0 <= int(m.group('sub')) <= 1
 
 
 def is_valid_writable(value):
@@ -141,7 +144,7 @@ def is_valid_writable(value):
 def write_header(attrs):
     """ Write default header values to dict-like ``attrs``. """
     attrs['FileFormat'] = 'SDA'
-    attrs['FormatVersion'] = '1.0'
+    attrs['FormatVersion'] = '1.1'
     attrs['Writable'] = 'yes'
     date_str = get_date_str()
     attrs['Created'] = date_str
