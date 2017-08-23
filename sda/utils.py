@@ -25,6 +25,12 @@ def coerce_character(data):
     return data
 
 
+def coerce_complex(data):
+    """ Coerce complex numeric types """
+    data = np.asarray(data).ravel(order='F')
+    return np.array([data.real, data.imag])
+
+
 def coerce_logical(data):
     """ Coerce 'logical' data to uint8 stored form. """
     if np.isscalar(data) or data.shape == ():
@@ -37,12 +43,6 @@ def coerce_logical(data):
 def coerce_numeric(data):
     """ Coerce 'numeric' data to stored form. """
     return data
-
-
-def coerce_complex(data):
-    """ Coerce complex numeric types """
-    data = data.ravel(order='F')
-    return np.array([data.real, data.imag])
 
 
 def error_if_bad_attr(h5file, attr, is_valid):

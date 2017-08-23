@@ -11,7 +11,10 @@ from sda.testing import (
     BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_SCALARS, TEST_UNSUPPORTED,
     temporary_file, temporary_h5file
 )
-from sda.utils import write_header
+from sda.utils import (
+    coerce_character, coerce_complex, coerce_logical, coerce_numeric,
+    write_header,
+)
 
 # FIXME Does an empty boolean array store as empty logical or empty numeric?
 
@@ -204,7 +207,7 @@ class TestSDAFileInsert(unittest.TestCase):
                 label = 'test' + str(i)
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
-                expected = np.frombuffer(obj.encode('ascii'), 'S1').view('u1')
+                expected = coerce_character(obj)
                 self.assertRecord(
                     sda_file, 'character', label, deflate, 'no', expected
                 )
@@ -225,7 +228,7 @@ class TestSDAFileInsert(unittest.TestCase):
                 label = 'test' + str(i)
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
-                expected = np.asarray(obj).astype(np.uint8).clip(0, 1)
+                expected = coerce_logical(np.asarray(obj))
                 self.assertRecord(
                     sda_file, 'logical', label, deflate, 'no', expected
                 )
@@ -257,15 +260,23 @@ class TestSDAFileInsert(unittest.TestCase):
                 label = 'test' + str(i)
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
-                expected = np.asarray(obj)
+                is_complex = np.iscomplexobj(obj)
+                if is_complex:
+                    expected = coerce_complex(np.asarray(obj))
+                else:
+                    expected = coerce_numeric(np.asarray(obj))
                 self.assertRecord(
-                    sda_file, 'numeric', label, deflate, 'no', expected
+                    sda_file, 'numeric', label, deflate, 'no', expected,
+                    Complex='yes' if is_complex else 'no'
                 )
 
             label = 'test_empty'
             deflate = 0
             sda_file.insert(label, [], label, deflate)
-            self.assertRecord(sda_file, 'numeric', label, deflate, 'yes', None)
+            self.assertRecord(
+                sda_file, 'numeric', label, deflate, 'yes', None,
+                Complex='no'
+            )
 
     def test_numeric_scalar(self):
         values = (obj for (obj, typ) in TEST_SCALARS if typ == 'numeric')
@@ -276,8 +287,14 @@ class TestSDAFileInsert(unittest.TestCase):
                 label = 'test' + str(i)
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
+                is_complex = np.iscomplexobj(obj)
+                if is_complex:
+                    expected = coerce_complex(obj)
+                else:
+                    expected = coerce_numeric(obj)
                 self.assertRecord(
-                    sda_file, 'numeric', label, deflate, 'no', obj
+                    sda_file, 'numeric', label, deflate, 'no', expected,
+                    Complex='yes' if is_complex else 'no'
                 )
 
             label = 'test_nan'
@@ -300,7 +317,7 @@ class TestSDAFileInsert(unittest.TestCase):
             self.assertEqual(sda_file.Updated, 'Unmodified')
 
     def assertRecord(self, sda_file, record_type, label, deflate, empty,
-                     expected):
+                     expected, **ds_args):
         with sda_file._h5file('r') as h5file:
             g = h5file[label]
             self.assertEqual(g.attrs['RecordType'], record_type)
@@ -311,6 +328,8 @@ class TestSDAFileInsert(unittest.TestCase):
             ds = g[label]
             self.assertEqual(ds.attrs['RecordType'], record_type)
             self.assertEqual(ds.attrs['Empty'], empty)
+            for attr, value in ds_args.items():
+                self.assertEqual(ds.attrs[attr], value)
             if empty == 'no':
                 assert_equal(ds[()], expected)
 
