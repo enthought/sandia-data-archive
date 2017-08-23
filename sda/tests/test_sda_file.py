@@ -1,8 +1,9 @@
 import os
+import string
 import unittest
 
 import numpy as np
-from numpy.testing import assert_equal
+from numpy.testing import assert_array_equal, assert_equal
 
 from sda.exceptions import BadSDAFile
 from sda.sda_file import SDAFile
@@ -12,7 +13,7 @@ from sda.testing import (
 )
 from sda.utils import write_header
 
-# TODO - test actual read and write
+# FIXME Does an empty boolean array store as empty logical or empty numeric?
 
 
 class TestSDAFileInit(unittest.TestCase):
@@ -194,7 +195,7 @@ class TestSDAFileInsert(unittest.TestCase):
             sda_file.insert('test', [0, 1, 2])
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
-    def test_character_scalar(self):
+    def test_character(self):
         values = (obj for (obj, typ) in TEST_SCALARS if typ == 'character')
 
         with temporary_file() as file_path:
@@ -308,6 +309,86 @@ class TestSDAFileInsert(unittest.TestCase):
             self.assertEqual(ds.attrs['Empty'], empty)
             if empty == 'no':
                 assert_equal(ds[()], expected)
+
+
+class TestSDAFileExtract(unittest.TestCase):
+
+    def test_invalid_label(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            with self.assertRaises(ValueError):
+                sda_file.extract('test/')
+
+            with self.assertRaises(ValueError):
+                sda_file.extract('test\\')
+
+    def test_label_not_exists(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            with self.assertRaises(ValueError):
+                sda_file.extract('test')
+
+    def test_no_timestamp_update(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            sda_file.insert('test', [0, 1, 2])
+            with sda_file._h5file('a') as h5file:
+                h5file.attrs['Updated'] = 'Unmodified'
+
+            sda_file.extract('test')
+            self.assertEqual(sda_file.Updated, 'Unmodified')
+
+    def test_character_scalar(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            expected = string.printable
+            sda_file.insert('test', expected)
+            extracted = sda_file.extract('test')
+            self.assertEqual(extracted, expected)
+
+            expected = ''
+            sda_file.insert('test2', '')
+            extracted = sda_file.extract('test2')
+            self.assertEqual(extracted, expected)
+
+    def test_logical_scalar(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            sda_file.insert('true', True)
+            sda_file.insert('false', False)
+            self.assertTrue(sda_file.extract('true'))
+            self.assertFalse(sda_file.extract('false'))
+
+    def test_logical_array(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            expected = np.array([1, 0, 1, 1], dtype=bool).reshape(2, 2)
+            sda_file.insert('test', expected)
+            extracted = sda_file.extract('test')
+            assert_array_equal(expected, extracted)
+            self.assertEqual(extracted.dtype, expected.dtype)
+
+    def test_numeric_scalar(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            sda_file.insert('test', 3.14159)
+            sda_file.insert('empty', np.nan)
+            self.assertEqual(sda_file.extract('test'), 3.14159)
+            self.assertTrue(np.isnan(sda_file.extract('empty')))
+
+    def test_numeric_array(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            for i, (data, typ) in enumerate(TEST_ARRAYS):
+                if typ == 'numeric' and isinstance(data, np.ndarray):
+                    label = 'test' + str(i)
+                    sda_file.insert(label, data)
+                    extracted = sda_file.extract(label)
+                    self.assertEqual(data.dtype, extracted.dtype)
+                    assert_array_equal(extracted, data)
+
+            sda_file.insert('empty', np.array([], dtype=float))
+            self.assertTrue(np.isnan(sda_file.extract('empty')))
 
 
 class TestSDAFileDescribe(unittest.TestCase):
