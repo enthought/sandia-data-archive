@@ -39,6 +39,12 @@ def coerce_numeric(data):
     return data
 
 
+def coerce_complex(data):
+    """ Coerce complex numeric types """
+    data = data.ravel(order='F')
+    return np.array([data.real, data.imag])
+
+
 def error_if_bad_attr(h5file, attr, is_valid):
     """ Raise BadSDAFile error if h5file has a bad SDA attribute. """
     name = h5file.filename
@@ -79,6 +85,28 @@ def error_if_not_writable(h5file):
         raise IOError(msg)
 
 
+def extract_character(data):
+    """ Extract 'character' data from uint8 stored form. """
+    data = data.tobytes().decode('ascii')
+    return data
+
+
+def extract_complex(data, shape):
+    """ Extract complex 'numeric' data from stored form. """
+    dtype = data.dtype
+    if dtype == np.float128:
+        c_dtype = np.complex256
+    elif dtype == np.float64:
+        c_dtype = np.complex128
+    elif dtype == np.float32:
+        c_dtype = np.complex64
+    extracted = np.empty(shape, dtype=c_dtype, order='F')
+    flat = extracted.ravel(order='F')
+    flat.real = data[0]
+    flat.imag = data[1]
+    return extracted
+
+
 def extract_logical(data):
     """ Extract 'logical' data from uint8 stored form. """
     if np.isscalar(data):
@@ -90,12 +118,6 @@ def extract_logical(data):
 
 def extract_numeric(data):
     """ Extract 'numeric' data from stored form. """
-    return data
-
-
-def extract_character(data):
-    """ Extract 'character' data from uint8 stored form. """
-    data = data.tobytes().decode('ascii')
     return data
 
 
