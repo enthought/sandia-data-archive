@@ -85,6 +85,18 @@ TEST_UNSUPPORTED = [
 ]
 
 
+# unsupported types, platform-specific
+if hasattr(np, 'complex256'):
+    TEST_UNSUPPORTED.append(np.complex256(0))
+    TEST_UNSUPPORTED.append(np.arange(5, dtype=np.complex256))
+if hasattr(np, 'float128'):
+    TEST_UNSUPPORTED.append(np.float128(0))
+    TEST_UNSUPPORTED.append(np.arange(5, dtype=np.float128))
+if hasattr(np, 'float16'):
+    TEST_UNSUPPORTED.append(np.float16(0))
+    TEST_UNSUPPORTED.append(np.arange(5, dtype=np.float16))
+
+
 @contextmanager
 def temporary_file(suffix='.sda'):
     pid, file_path = tempfile.mkstemp(suffix=suffix)

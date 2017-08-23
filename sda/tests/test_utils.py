@@ -30,16 +30,10 @@ class TestUtils(unittest.TestCase):
 
     def test_coerce_complex(self):
 
-        data = np.arange(6, dtype=np.complex256)
+        data = np.arange(6, dtype=np.complex128)
         data.imag = -1
 
-        expected = np.array([data.real, data.imag], dtype=np.float128)
-        coerced = coerce_complex(data)
-        self.assertEqual(expected.dtype, coerced.dtype)
-        assert_array_equal(expected, coerced)
-
-        data = data.astype(np.complex128)
-        expected = expected.astype(np.float64)
+        expected = np.array([data.real, data.imag], dtype=np.float64)
         coerced = coerce_complex(data)
         self.assertEqual(expected.dtype, coerced.dtype)
         assert_array_equal(expected, coerced)
@@ -135,16 +129,10 @@ class TestUtils(unittest.TestCase):
 
     def test_extract_complex(self):
 
-        expected = np.arange(6, dtype=np.complex256)
+        expected = np.arange(6, dtype=np.complex128)
         expected.imag = -1
 
-        stored = np.array([expected.real, expected.imag], dtype=np.float128)
-        extracted = extract_complex(stored, (6,))
-        self.assertEqual(expected.dtype, extracted.dtype)
-        assert_array_equal(expected, extracted)
-
-        expected = expected.astype(np.complex128)
-        stored = stored.astype(np.float64)
+        stored = np.array([expected.real, expected.imag], dtype=np.float64)
         extracted = extract_complex(stored, (6,))
         self.assertEqual(expected.dtype, extracted.dtype)
         assert_array_equal(expected, extracted)

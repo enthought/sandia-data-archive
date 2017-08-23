@@ -19,6 +19,14 @@ DATE_FORMAT_SHORT = "%d-%b-%Y"
 VERSION_1_RE = re.compile(r'1\.(?P<sub>\d+)')
 
 
+# Type codes for unsupported numeric types
+UNSUPPORTED_NUMERIC_TYPE_CODES = {
+    'G',  # complex256
+    'g',  # float128
+    'e',  # float16
+}
+
+
 def coerce_character(data):
     """ Coerce 'character' data to uint8 stored form. """
     data = np.frombuffer(data.encode('ascii'), np.uint8)
@@ -174,9 +182,16 @@ def infer_record_type(obj):
     if np.isscalar(obj):
         check = isinstance
         cast_obj = obj
+
+        if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
+            return None, None
+
     else:
         check = issubclass
         cast_obj = np.asarray(obj)
+        if cast_obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
+            return None, None
+
         obj = cast_obj.dtype.type
 
     if check(obj, (bool, np.bool_)):
