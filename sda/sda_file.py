@@ -227,7 +227,7 @@ class SDAFile(object):
         """
         self._validate_can_write()
         self._validate_labels(label, can_exist=False)
-        if not isinstance(deflate, int) or not 0 <= deflate <= 9:
+        if not isinstance(deflate, (int, np.integer)) or not 0 <= deflate <= 9:
             msg = "'deflate' must be an integer from 0 to 9"
             raise ValueError(msg)
         record_type, cast_obj = infer_record_type(data)
@@ -279,6 +279,20 @@ class SDAFile(object):
         with self._h5file('a') as h5file:
             for label in labels:
                 del h5file[label]
+
+    def replace(self, label, data):
+        """ Replace an existing dataset.
+
+        This is equivalent to removing the data and inserting a new entry using
+        the same label, description, and deflate option.
+
+        """
+        self._validate_can_write()
+        self._validate_labels(label, must_exist=True)
+        with self._h5file('r') as h5file:
+            attrs = get_decoded(h5file[label].attrs, 'Deflate', 'Description')
+        self.remove(label)
+        self.insert(label, data, attrs['Description'], attrs['Deflate'])
 
     # Private
     def _insert_data(self, label, data, description, deflate, record_type,
