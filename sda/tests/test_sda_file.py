@@ -510,6 +510,52 @@ class TestSDAFileMisc(unittest.TestCase):
 
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
+    def test_probe(self):
+
+        cols = [
+            'RecordType', 'Description', 'Empty', 'Deflate', 'Complex',
+            'ArraySize', 'Sparse', 'RecordSize' 'Class', 'FieldNames',
+            'Command',
+        ]
+
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            labels = []
+            for i, (obj, _) in enumerate(TEST_ARRAYS[:4]):
+                label = 'array' + str(i)
+                labels.append(label)
+                sda_file.insert(label, obj, label, i)
+
+            for i, (obj, _) in enumerate(TEST_SCALARS[:2]):
+                label = 'scalar' + str(i)
+                labels.append(label)
+                sda_file.insert(label, obj, label, i)
+
+            state = sda_file.probe()
+            state.sort_index()
+            self.assertEqual(len(state), 6)
+            assert_array_equal(state.columns, cols)
+            assert_array_equal(state.index, labels)
+            assert_array_equal(state['Description'], labels)
+            assert_array_equal(state['Deflate'], [0, 1, 2, 3, 0, 1])
+
+            state = sda_file.probe('array.*')
+            state.sort_index()
+            self.assertEqual(len(state), 4)
+            assert_array_equal(state.columns, cols)
+            assert_array_equal(state.index, labels[:4])
+            assert_array_equal(state['Description'], labels[:4])
+            assert_array_equal(state['Deflate'], [0, 1, 2, 3])
+
+            state = sda_file.probe('scalar.*')
+            state.sort_index()
+            self.assertEqual(len(state), 2)
+            assert_array_equal(state.columns, cols)
+            assert_array_equal(state.index, labels[4:])
+            assert_array_equal(state['Description'], labels[4:])
+            assert_array_equal(state['Deflate'], [0, 1])
+
     def test_replace(self):
 
         with temporary_file() as file_path:
