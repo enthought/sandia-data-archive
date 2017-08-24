@@ -10,6 +10,7 @@ when interrogating the contents of an SDA file.
 
 from contextlib import contextmanager
 import os.path as op
+import re
 
 import h5py
 import numpy as np
@@ -281,6 +282,48 @@ class SDAFile(object):
                 del h5file[label]
             update_header(h5file.attrs)
 
+    def probe(self, pattern=None):
+        """ Summarize the state of the archive
+
+        This requires the pandas package.
+
+        Parameters
+        ----------
+        pattern : str or None, optional
+            A search pattern (python regular expression) applied to find
+            archive labels of interest. If None, all labels are selected.
+
+        Returns
+        -------
+        summary : DataFrame
+            A table summarizing the archive.
+
+        """
+        from pandas import DataFrame
+        labels = self.labels()
+        if pattern is not None:
+            regex = re.compile(pattern)
+            labels = [
+                label for label in labels if regex.match(label) is not None
+            ]
+
+        summary = []
+        with self._h5file('r') as h5file:
+            for label in labels:
+                g = h5file[label]
+                attrs = get_decoded(g.attrs)
+                if label in g:
+                    attrs.update(get_decoded(g[label].attrs))
+                attrs['label'] = label
+                summary.append(attrs)
+
+        cols = [
+            'label', 'RecordType', 'Description', 'Empty', 'Deflate',
+            'Complex', 'ArraySize', 'Sparse', 'RecordSize' 'Class',
+            'FieldNames', 'Command',
+        ]
+        return DataFrame(summary, columns=cols).set_index('label').fillna('')
+
     def replace(self, label, data):
         """ Replace an existing dataset.
 
@@ -369,7 +412,7 @@ class SDAFile(object):
             for label in labels:
                 label_exists = label in h5file
             if not can_exist and label_exists:
-                msg = "Label '{}' already exists."
+                msg = "Label '{}' already exists.".format(label)
                 raise ValueError(msg)
             if must_exist and not label_exists:
                 msg = "Label item '{}' does not exist".format(label)

@@ -4,3 +4,4 @@ Sphinx
 coverage
 coveralls
 h5py
+pandas
