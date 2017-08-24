@@ -17,10 +17,13 @@ import numpy as np
 from .utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
     error_if_bad_header, error_if_not_writable, extract_character,
-    extract_complex, extract_logical, extract_numeric, get_date_str,
-    get_empty_for_type, infer_record_type, is_valid_writable, write_header,
+    extract_complex, extract_logical, extract_numeric, get_decoded,
+    get_empty_for_type, infer_record_type, is_valid_writable, set_encoded,
+    update_header, write_header,
 )
 
+
+SUPPORTED_RECORD_TYPES = ('character', 'logical', 'numeric')
 
 WRITE_MODES = ('w', 'w-', 'x', 'a')
 
@@ -65,8 +68,9 @@ class SDAFile(object):
             with self._h5file('r') as h5file:
                 error_if_bad_header(h5file)
 
-                # Check that file is writable when mode will write to file
-                if mode != 'r':
+            # Check that file is writable when mode will write to file.
+            if mode != 'r':
+                with self._h5file('a') as h5file:
                     error_if_not_writable(h5file)
 
         # Create the header if this is a new file
@@ -107,7 +111,7 @@ class SDAFile(object):
         if not is_valid_writable(value):
             raise ValueError("Must be 'yes' or 'no'")
         with self._h5file('a') as h5file:
-            h5file.attrs['Writable'] = value
+            set_encoded(h5file.attrs, Writable=value)
 
     @property
     def Created(self):
@@ -137,8 +141,8 @@ class SDAFile(object):
         self._validate_can_write()
         self._validate_label(label, must_exist=True)
         with self._h5file('a') as h5file:
-            h5file[label].attrs['Description'] = description
-        self._update_timestamp()
+            set_encoded(h5file[label].attrs, Description=description)
+            update_header(h5file.attrs)
 
     def extract(self, label):
         """ Extract data from an SDA file.
@@ -154,31 +158,35 @@ class SDAFile(object):
         ValueError if the label does not exist
 
         """
-        self._validate_can_write()
         self._validate_label(label, must_exist=True)
         with self._h5file('r') as h5file:
             g = h5file[label]
-            record_type = g.attrs['RecordType']
+            group_attrs = get_decoded(g.attrs, 'RecordType', 'Empty')
+            record_type = group_attrs['RecordType']
+            if record_type not in SUPPORTED_RECORD_TYPES:
+                msg = "RecordType '{}' is not supported".format(record_type)
+                raise ValueError(msg)
             # short circuit empty archives to avoid unnecessarily loading data.
-            if g.attrs['Empty'] == 'yes':
+            if group_attrs['Empty'] == 'yes':
                 return get_empty_for_type(record_type)
             ds = g[label]
-            complex_flag = ds.attrs.get('Complex', 'no')
-            shape = ds.attrs.get('ArrayShape')
+            data_attrs = get_decoded(ds.attrs, 'Complex', 'ArraySize')
+            complex_flag = data_attrs.get('Complex', 'no')
+            shape = data_attrs.get('ArraySize', None)
             data = ds[()]
 
         if record_type == 'numeric':
             if complex_flag == 'yes':
-                extracted = extract_complex(data, shape)
-                # squeeze leading dimension if this looks like a 1D array
-                if extracted.ndim == 2 and extracted.shape[0] == 1:
-                    # if it's a scalar, go all the way
-                    if extracted.shape[1] == 1:
-                        extracted = extracted[0, 0]
-                    else:
-                        extracted = np.squeeze(extracted, axis=0)
+                extracted = extract_complex(data, shape.astype(int))
             else:
                 extracted = extract_numeric(data)
+            # squeeze leading dimension if this is a MATLAB row array
+            if extracted.ndim == 2 and extracted.shape[0] == 1:
+                # if it's a scalar, go all the way
+                if extracted.shape[1] == 1:
+                    extracted = extracted[0, 0]
+                else:
+                    extracted = np.squeeze(extracted, axis=0)
         elif record_type == 'logical':
             extracted = extract_logical(data)
         elif record_type == 'character':
@@ -249,7 +257,6 @@ class SDAFile(object):
             label, cast_obj, description, deflate, record_type, is_complex,
             original_shape
         )
-        self._update_timestamp()
 
     # Private
     def _insert_data(self, label, data, description, deflate, record_type,
@@ -271,10 +278,13 @@ class SDAFile(object):
 
         with self._h5file('a') as h5file:
             g = h5file.create_group(label)
-            g.attrs['RecordType'] = record_type
-            g.attrs['Deflate'] = deflate
-            g.attrs['Description'] = description
-            g.attrs['Empty'] = empty
+            set_encoded(
+                g.attrs,
+                RecordType=record_type,
+                Deflate=deflate,
+                Description=description,
+                Empty=empty,
+            )
 
             ds = g.create_dataset(
                 label,
@@ -282,11 +292,14 @@ class SDAFile(object):
                 data=data,
                 compression=compression,
             )
-            ds.attrs['RecordType'] = record_type
-            ds.attrs['Empty'] = empty
-            ds.attrs['Complex'] = 'yes' if is_complex else 'no'
+            data_attrs = {}
+            data_attrs['RecordType'] = record_type
+            data_attrs['Empty'] = empty
+            data_attrs['Complex'] = 'yes' if is_complex else 'no'
             if is_complex:
-                ds.attrs['ArrayShape'] = original_shape
+                data_attrs['ArraySize'] = original_shape
+            set_encoded(ds.attrs, **data_attrs)
+            update_header(h5file.attrs)
 
     def _is_existing_label(self, label):
         with self._h5file('r') as h5file:
@@ -301,8 +314,9 @@ class SDAFile(object):
             h5file.close()
 
     def _get_attr(self, attr):
+        """ Get a named atribute as a string """
         with self._h5file('r') as h5file:
-            return h5file.attrs[attr]
+            return get_decoded(h5file.attrs, attr)[attr]
 
     def _validate_can_write(self):
         """ Validate file mode and 'Writable' attr allow writing. """
@@ -322,7 +336,3 @@ class SDAFile(object):
         if must_exist and not label_exists:
             msg = "Label item '{}' does not exist".format(label)
             raise ValueError(msg)
-
-    def _update_timestamp(self):
-        with self._h5file('a') as h5file:
-            h5file.attrs['Updated'] = get_date_str()
