@@ -274,7 +274,7 @@ class SDAFile(object):
             msg = "Specify labels to remove"
             raise ValueError(msg)
 
-        self._validate_labels(*labels, must_exist=True)
+        self._validate_labels(labels, must_exist=True)
 
         with self._h5file('a') as h5file:
             for label in labels:
@@ -343,7 +343,9 @@ class SDAFile(object):
         if self.Writable == 'no':
             raise IOError("'Writable' flag is 'no'")
 
-    def _validate_labels(self, *labels, can_exist=True, must_exist=False):
+    def _validate_labels(self, labels, can_exist=True, must_exist=False):
+        if isinstance(labels, str):
+            labels = [labels]
         for label in labels:
             if '/' in label or '\\' in label:
                 msg = r"label cannot contain '/' or '\'"
