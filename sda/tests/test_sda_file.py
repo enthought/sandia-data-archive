@@ -1,4 +1,5 @@
 import os
+import random
 import string
 import unittest
 
@@ -482,6 +483,7 @@ class TestSDAFileMisc(unittest.TestCase):
             sda_file = SDAFile(file_path, 'w')
 
             labels = []
+
             for i, (obj, _) in enumerate(TEST_SCALARS + TEST_ARRAYS):
                 label = 'test' + str(i)
                 labels.append(label)
@@ -493,11 +495,44 @@ class TestSDAFileMisc(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sda_file.remove('not a label')
 
+            random.shuffle(labels)
             removed = labels[::2]
             kept = labels[1::2]
+
+            with sda_file._h5file('a') as h5file:
+                set_encoded(h5file.attrs, Updated='Unmodified')
 
             sda_file.remove(*removed)
             self.assertEqual(sorted(sda_file.labels()), sorted(kept))
 
             sda_file.remove(*kept)
             self.assertEqual(sda_file.labels(), [])
+
+            self.assertNotEqual(sda_file.Updated, 'Unmodified')
+
+    def test_replace(self):
+
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            sda_file.insert('test', TEST_ARRAYS[0][0], 'test_description', 1)
+
+            replacements = [
+                data for (data, _) in TEST_ARRAYS[1:] + TEST_SCALARS
+            ]
+            random.shuffle(replacements)
+            replacements = replacements[:10]
+
+            with sda_file._h5file('a') as h5file:
+                set_encoded(h5file.attrs, Updated='Unmodified')
+
+            for new_data in replacements:
+                sda_file.replace('test', new_data)
+                assert_equal(sda_file.extract('test'), new_data)
+                with sda_file._h5file('r') as h5file:
+                    attrs = get_decoded(
+                        h5file['test'].attrs, 'Deflate', 'Description'
+                    )
+                self.assertEqual(attrs['Description'], 'test_description')
+                self.assertEqual(attrs['Deflate'], 1)
+
+            self.assertNotEqual(sda_file.Updated, 'Unmodified')
