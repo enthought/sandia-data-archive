@@ -468,7 +468,7 @@ class TestSDAFileDescribe(unittest.TestCase):
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
 
-class TestSDAFileLabels(unittest.TestCase):
+class TestSDAFileMisc(unittest.TestCase):
 
     def test_labels(self):
         with temporary_file() as file_path:
@@ -476,3 +476,28 @@ class TestSDAFileLabels(unittest.TestCase):
             sda_file.insert('l0', [0])
             sda_file.insert('l1', [1])
             self.assertEqual(sorted(sda_file.labels()), ['l0', 'l1'])
+
+    def test_delete(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            labels = []
+            for i, (obj, _) in enumerate(TEST_SCALARS + TEST_ARRAYS):
+                label = 'test' + str(i)
+                labels.append(label)
+                sda_file.insert(label, obj)
+
+            with self.assertRaises(ValueError):
+                sda_file.remove()
+
+            with self.assertRaises(ValueError):
+                sda_file.remove('not a label')
+
+            removed = labels[::2]
+            kept = labels[1::2]
+
+            sda_file.remove(*removed)
+            self.assertEqual(sorted(sda_file.labels()), sorted(kept))
+
+            sda_file.remove(*kept)
+            self.assertEqual(sda_file.labels(), [])
