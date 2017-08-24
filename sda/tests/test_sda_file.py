@@ -514,7 +514,7 @@ class TestSDAFileMisc(unittest.TestCase):
 
         cols = [
             'RecordType', 'Description', 'Empty', 'Deflate', 'Complex',
-            'ArraySize', 'Sparse', 'RecordSize' 'Class', 'FieldNames',
+            'ArraySize', 'Sparse', 'RecordSize', 'Class', 'FieldNames',
             'Command',
         ]
 
