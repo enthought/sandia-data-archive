@@ -6,6 +6,16 @@ import tempfile
 import h5py
 import numpy as np
 
+import sda
+
+
+DATA_DIR = op.join(op.abspath(op.dirname(sda.__file__)), 'tests', 'data')
+
+
+def data_path(fname):
+    """ Get path to data in test data directory. """
+    return op.join(DATA_DIR, fname)
+
 
 BAD_ATTRS = {
     'FileFormat': 'SDB',

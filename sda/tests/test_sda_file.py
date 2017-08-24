@@ -262,11 +262,14 @@ class TestSDAFileInsert(unittest.TestCase):
                 is_complex = np.iscomplexobj(obj)
                 if is_complex:
                     expected = coerce_complex(np.asarray(obj))
+                    shape = np.atleast_2d(obj).shape
                 else:
                     expected = coerce_numeric(np.asarray(obj))
+                    shape = None
                 self.assertRecord(
                     sda_file, 'numeric', label, deflate, 'no', expected,
-                    Complex='yes' if is_complex else 'no'
+                    Complex='yes' if is_complex else 'no',
+                    ArraySize=shape
                 )
 
             label = 'test_empty'
@@ -330,7 +333,7 @@ class TestSDAFileInsert(unittest.TestCase):
             self.assertEqual(attrs['RecordType'], record_type)
             self.assertEqual(attrs['Empty'], empty)
             for attr, value in ds_args.items():
-                self.assertEqual(attrs[attr], value)
+                assert_equal(attrs.get(attr), value)
             if empty == 'no':
                 assert_equal(ds[()], expected)
 

@@ -23,6 +23,8 @@ from .utils import (
 )
 
 
+SUPPORTED_RECORD_TYPES = ('character', 'logical', 'numeric')
+
 WRITE_MODES = ('w', 'w-', 'x', 'a')
 
 
@@ -161,27 +163,30 @@ class SDAFile(object):
             g = h5file[label]
             group_attrs = get_decoded(g.attrs, 'RecordType', 'Empty')
             record_type = group_attrs['RecordType']
+            if record_type not in SUPPORTED_RECORD_TYPES:
+                msg = "RecordType '{}' is not supported".format(record_type)
+                raise ValueError(msg)
             # short circuit empty archives to avoid unnecessarily loading data.
             if group_attrs['Empty'] == 'yes':
                 return get_empty_for_type(record_type)
             ds = g[label]
-            data_attrs = get_decoded(ds.attrs, 'Complex', 'ArrayShape')
+            data_attrs = get_decoded(ds.attrs, 'Complex', 'ArraySize')
             complex_flag = data_attrs.get('Complex', 'no')
-            shape = data_attrs.get('ArrayShape', None)
+            shape = data_attrs.get('ArraySize', None)
             data = ds[()]
 
         if record_type == 'numeric':
             if complex_flag == 'yes':
-                extracted = extract_complex(data, shape)
-                # squeeze leading dimension if this looks like a 1D array
-                if extracted.ndim == 2 and extracted.shape[0] == 1:
-                    # if it's a scalar, go all the way
-                    if extracted.shape[1] == 1:
-                        extracted = extracted[0, 0]
-                    else:
-                        extracted = np.squeeze(extracted, axis=0)
+                extracted = extract_complex(data, shape.astype(int))
             else:
                 extracted = extract_numeric(data)
+            # squeeze leading dimension if this is a MATLAB row array
+            if extracted.ndim == 2 and extracted.shape[0] == 1:
+                # if it's a scalar, go all the way
+                if extracted.shape[1] == 1:
+                    extracted = extracted[0, 0]
+                else:
+                    extracted = np.squeeze(extracted, axis=0)
         elif record_type == 'logical':
             extracted = extract_logical(data)
         elif record_type == 'character':
@@ -292,7 +297,7 @@ class SDAFile(object):
             data_attrs['Empty'] = empty
             data_attrs['Complex'] = 'yes' if is_complex else 'no'
             if is_complex:
-                data_attrs['ArrayShape'] = original_shape
+                data_attrs['ArraySize'] = original_shape
             set_encoded(ds.attrs, **data_attrs)
             update_header(h5file.attrs)
 
