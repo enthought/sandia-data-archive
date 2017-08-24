@@ -279,6 +279,7 @@ class SDAFile(object):
         with self._h5file('a') as h5file:
             for label in labels:
                 del h5file[label]
+            update_header(h5file.attrs)
 
     def replace(self, label, data):
         """ Replace an existing dataset.

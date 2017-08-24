@@ -499,13 +499,16 @@ class TestSDAFileMisc(unittest.TestCase):
             removed = labels[::2]
             kept = labels[1::2]
 
+            with sda_file._h5file('a') as h5file:
+                set_encoded(h5file.attrs, Updated='Unmodified')
+
             sda_file.remove(*removed)
             self.assertEqual(sorted(sda_file.labels()), sorted(kept))
 
             sda_file.remove(*kept)
             self.assertEqual(sda_file.labels(), [])
 
-            # Test timestamp!
+            self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
     def test_replace(self):
 
