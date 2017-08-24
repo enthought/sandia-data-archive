@@ -139,7 +139,7 @@ class SDAFile(object):
 
         """
         self._validate_can_write()
-        self._validate_label(label, must_exist=True)
+        self._validate_labels(label, must_exist=True)
         with self._h5file('a') as h5file:
             set_encoded(h5file[label].attrs, Description=description)
             update_header(h5file.attrs)
@@ -158,7 +158,7 @@ class SDAFile(object):
         ValueError if the label does not exist
 
         """
-        self._validate_label(label, must_exist=True)
+        self._validate_labels(label, must_exist=True)
         with self._h5file('r') as h5file:
             g = h5file[label]
             group_attrs = get_decoded(g.attrs, 'RecordType', 'Empty')
@@ -226,7 +226,7 @@ class SDAFile(object):
 
         """
         self._validate_can_write()
-        self._validate_label(label, can_exist=False)
+        self._validate_labels(label, can_exist=False)
         if not isinstance(deflate, int) or not 0 <= deflate <= 9:
             msg = "'deflate' must be an integer from 0 to 9"
             raise ValueError(msg)
@@ -257,6 +257,28 @@ class SDAFile(object):
             label, cast_obj, description, deflate, record_type, is_complex,
             original_shape
         )
+
+    def labels(self):
+        """ Get data labels from the archive. """
+        with self._h5file('r') as h5file:
+            return list(h5file.keys())
+
+    def remove(self, *labels):
+        """ Remove specified labels from the archive.
+
+        This cannot be undone.
+
+        """
+        self._validate_can_write()
+        if len(labels) == 0:
+            msg = "Specify labels to remove"
+            raise ValueError(msg)
+
+        self._validate_labels(labels, must_exist=True)
+
+        with self._h5file('a') as h5file:
+            for label in labels:
+                del h5file[label]
 
     # Private
     def _insert_data(self, label, data, description, deflate, record_type,
@@ -301,10 +323,6 @@ class SDAFile(object):
             set_encoded(ds.attrs, **data_attrs)
             update_header(h5file.attrs)
 
-    def _is_existing_label(self, label):
-        with self._h5file('r') as h5file:
-            return label in h5file
-
     @contextmanager
     def _h5file(self, mode):
         h5file = h5py.File(self._filename, mode, **self._kw)
@@ -325,14 +343,19 @@ class SDAFile(object):
         if self.Writable == 'no':
             raise IOError("'Writable' flag is 'no'")
 
-    def _validate_label(self, label, can_exist=True, must_exist=False):
-        if '/' in label or '\\' in label:
-            msg = r"label cannot contain '/' or '\'"
-            raise ValueError(msg)
-        label_exists = self._is_existing_label(label)
-        if not can_exist and label_exists:
-            msg = "Label '{}' already exists."
-            raise ValueError(msg)
-        if must_exist and not label_exists:
-            msg = "Label item '{}' does not exist".format(label)
-            raise ValueError(msg)
+    def _validate_labels(self, labels, can_exist=True, must_exist=False):
+        if isinstance(labels, str):
+            labels = [labels]
+        for label in labels:
+            if '/' in label or '\\' in label:
+                msg = r"label cannot contain '/' or '\'"
+                raise ValueError(msg)
+        with self._h5file('r') as h5file:
+            for label in labels:
+                label_exists = label in h5file
+            if not can_exist and label_exists:
+                msg = "Label '{}' already exists."
+                raise ValueError(msg)
+            if must_exist and not label_exists:
+                msg = "Label item '{}' does not exist".format(label)
+                raise ValueError(msg)
