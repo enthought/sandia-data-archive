@@ -14,9 +14,9 @@ from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
     error_if_bad_attr, error_if_bad_header, error_if_not_writable,
     extract_character, extract_complex, extract_logical, extract_numeric,
-    get_date_str, get_empty_for_type, infer_record_type, is_valid_date,
-    is_valid_file_format, is_valid_format_version, is_valid_writable,
-    write_header
+    get_date_str, get_decoded, get_empty_for_type, infer_record_type,
+    is_valid_date, is_valid_file_format, is_valid_format_version,
+    is_valid_writable, set_encoded, update_header, write_header
 )
 
 
@@ -87,12 +87,12 @@ class TestUtils(unittest.TestCase):
                 error_if_bad_attr(h5file, 'foo', lambda value: value == 'foo')
 
             # Wrong attr -> bad
-            h5file.attrs['foo'] = 'bar'
+            h5file.attrs['foo'] = b'bar'
             with self.assertRaises(BadSDAFile):
                 error_if_bad_attr(h5file, 'foo', lambda value: value == 'foo')
 
             # Right attr -> good
-            h5file.attrs['foo'] = 'foo'
+            h5file.attrs['foo'] = b'foo'
             error_if_bad_attr(h5file, 'foo', lambda value: value == 'foo')
 
     def test_error_if_bad_header(self):
@@ -101,23 +101,23 @@ class TestUtils(unittest.TestCase):
             attrs = h5file.attrs
 
             # Write a good header
-            attrs.update(GOOD_ATTRS)
+            for attr, value in GOOD_ATTRS.items():
+                attrs[attr] = value.encode('ascii')
             error_if_not_writable(h5file)
 
             # Check each bad value
             for attr, value in BAD_ATTRS.items():
-                attrs.update(GOOD_ATTRS)
-                attrs[attr] = value
+                attrs[attr] = value.encode('ascii')
 
                 with self.assertRaises(BadSDAFile):
                     error_if_bad_header(h5file)
 
     def test_error_if_not_writable(self):
         with temporary_h5file() as h5file:
-            h5file.attrs['Writable'] = 'yes'
+            h5file.attrs['Writable'] = b'yes'
             error_if_not_writable(h5file)
 
-            h5file.attrs['Writable'] = 'no'
+            h5file.attrs['Writable'] = b'no'
             with self.assertRaises(IOError):
                 error_if_not_writable(h5file)
 
@@ -216,16 +216,44 @@ class TestUtils(unittest.TestCase):
         self.assertFalse(is_valid_writable(True))
         self.assertFalse(is_valid_writable(False))
 
+    def test_get_decoded(self):
+        attrs = {'a': b'foo', 'b': b'bar', 'c': 9}
+        decoded = get_decoded(attrs, 'a', 'c', 'd')
+        self.assertEqual(sorted(decoded.keys()), ['a', 'c'])
+        self.assertEqual(decoded['a'], 'foo')
+        self.assertEqual(decoded['c'], 9)
+
+        # Get everything
+        decoded = get_decoded(attrs)
+        self.assertEqual(sorted(decoded.keys()), ['a', 'b', 'c'])
+        self.assertEqual(decoded['a'], 'foo')
+        self.assertEqual(decoded['b'], 'bar')
+        self.assertEqual(decoded['c'], 9)
+
+    def test_set_encoded(self):
+        encoded = {}
+        set_encoded(encoded, a='foo', b='bar', c=9)
+        self.assertEqual(sorted(encoded.keys()), ['a', 'b', 'c'])
+        self.assertEqual(encoded['a'], b'foo')
+        self.assertEqual(encoded['b'], b'bar')
+        self.assertEqual(encoded['c'], 9)
+
+    def test_update_header(self):
+        attrs = {}
+        update_header(attrs)
+        self.assertEqual(len(attrs), 2)
+        self.assertEqual(attrs['FormatVersion'], b'1.1')
+        self.assertIsNotNone(attrs['Updated'])
+
     def test_write_header(self):
-
-        with temporary_h5file() as h5file:
-            write_header(h5file.attrs)
-
-            attrs = h5file.attrs
-            self.assertEqual(attrs['FileFormat'], 'SDA')
-            self.assertEqual(attrs['FormatVersion'], '1.1')
-            self.assertEqual(attrs['Writable'], 'yes')
-            self.assertEqual(attrs['Created'], attrs['Updated'])
+        attrs = {}
+        write_header(attrs)
+        self.assertEqual(len(attrs), 5)
+        self.assertEqual(attrs['FileFormat'], b'SDA')
+        self.assertEqual(attrs['FormatVersion'], b'1.1')
+        self.assertEqual(attrs['Writable'], b'yes')
+        self.assertEqual(attrs['Created'], attrs['Updated'])
+        self.assertIsNotNone(attrs['Updated'])
 
     def test_infer_record_type(self):
 

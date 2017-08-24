@@ -13,10 +13,8 @@ from sda.testing import (
 )
 from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    write_header,
+    get_decoded, set_encoded, write_header
 )
-
-# FIXME Does an empty boolean array store as empty logical or empty numeric?
 
 
 class TestSDAFileInit(unittest.TestCase):
@@ -55,7 +53,7 @@ class TestSDAFileInit(unittest.TestCase):
     def test_mode_default(self):
         with temporary_h5file() as h5file:
             name = h5file.filename
-            h5file.attrs.update(GOOD_ATTRS)
+            set_encoded(h5file.attrs, **GOOD_ATTRS)
             h5file.close()
             sda_file = SDAFile(name)
             self.assertEqual(sda_file.mode, 'a')
@@ -78,6 +76,7 @@ class TestSDAFileInit(unittest.TestCase):
             write_header(attrs)
             del attrs['Created']
             del attrs['Updated']
+            attrs = get_decoded(attrs)
 
         for attr, expected in attrs.items():
             actual = getattr(sda_file, attr)
@@ -92,8 +91,8 @@ class TestSDAFileInit(unittest.TestCase):
         """
         with temporary_h5file() as h5file:
             name = h5file.filename
-            if attrs is not None:
-                h5file.attrs.update(attrs)
+            if attrs is not None and len(attrs) > 0:
+                set_encoded(h5file.attrs, **attrs)
             h5file.close()
 
             if exc is not None:
@@ -147,7 +146,7 @@ class TestSDAFileInsert(unittest.TestCase):
     def test_read_only(self):
         with temporary_h5file() as h5file:
             name = h5file.filename
-            h5file.attrs.update(GOOD_ATTRS)
+            set_encoded(h5file.attrs, **GOOD_ATTRS)
             h5file.close()
             sda_file = SDAFile(name, 'r')
 
@@ -193,7 +192,7 @@ class TestSDAFileInsert(unittest.TestCase):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
             with sda_file._h5file('a') as h5file:
-                h5file.attrs['Updated'] = 'Unmodified'
+                set_encoded(h5file.attrs, Updated='Unmodified')
 
             sda_file.insert('test', [0, 1, 2])
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
@@ -306,7 +305,7 @@ class TestSDAFileInsert(unittest.TestCase):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
             with sda_file._h5file('a') as h5file:
-                h5file.attrs['Updated'] = 'Unmodified'
+                set_encoded(h5file.attrs, Updated='Unmodified')
 
             for i, obj in enumerate(TEST_UNSUPPORTED):
                 label = 'test' + str(i)
@@ -320,16 +319,18 @@ class TestSDAFileInsert(unittest.TestCase):
                      expected, **ds_args):
         with sda_file._h5file('r') as h5file:
             g = h5file[label]
-            self.assertEqual(g.attrs['RecordType'], record_type)
-            self.assertEqual(g.attrs['Deflate'], deflate)
-            self.assertEqual(g.attrs['Description'], label)
-            self.assertEqual(g.attrs['Empty'], empty)
+            attrs = get_decoded(g.attrs)
+            self.assertEqual(attrs['RecordType'], record_type)
+            self.assertEqual(attrs['Deflate'], deflate)
+            self.assertEqual(attrs['Description'], label)
+            self.assertEqual(attrs['Empty'], empty)
 
             ds = g[label]
-            self.assertEqual(ds.attrs['RecordType'], record_type)
-            self.assertEqual(ds.attrs['Empty'], empty)
+            attrs = get_decoded(ds.attrs)
+            self.assertEqual(attrs['RecordType'], record_type)
+            self.assertEqual(attrs['Empty'], empty)
             for attr, value in ds_args.items():
-                self.assertEqual(ds.attrs[attr], value)
+                self.assertEqual(attrs[attr], value)
             if empty == 'no':
                 assert_equal(ds[()], expected)
 
@@ -356,7 +357,7 @@ class TestSDAFileExtract(unittest.TestCase):
             sda_file = SDAFile(file_path, 'w')
             sda_file.insert('test', [0, 1, 2])
             with sda_file._h5file('a') as h5file:
-                h5file.attrs['Updated'] = 'Unmodified'
+                set_encoded(h5file.attrs, Updated='Unmodified')
 
             sda_file.extract('test')
             self.assertEqual(sda_file.Updated, 'Unmodified')
@@ -419,7 +420,7 @@ class TestSDAFileDescribe(unittest.TestCase):
     def test_read_only(self):
         with temporary_h5file() as h5file:
             name = h5file.filename
-            h5file.attrs.update(GOOD_ATTRS)
+            set_encoded(h5file.attrs, **GOOD_ATTRS)
             h5file.close()
             sda_file = SDAFile(name, 'r')
 
@@ -452,12 +453,13 @@ class TestSDAFileDescribe(unittest.TestCase):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
             with sda_file._h5file('a') as h5file:
-                h5file.attrs['Updated'] = 'Unmodifed'
+                set_encoded(h5file.attrs, Updated='Unmodified')
 
             sda_file.insert('test', [1, 2, 3])
             sda_file.describe('test', 'second')
             with sda_file._h5file('r') as h5file:
-                self.assertEqual(h5file['test'].attrs['Description'], 'second')
+                attrs = get_decoded(h5file['test'].attrs, 'Description')
+                self.assertEqual(attrs['Description'], 'second')
 
             # Make sure the 'Updated' attr gets updated
             self.assertNotEqual(sda_file.Updated, 'Unmodified')

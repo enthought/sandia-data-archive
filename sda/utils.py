@@ -54,7 +54,12 @@ def coerce_numeric(data):
 
 
 def error_if_bad_attr(h5file, attr, is_valid):
-    """ Raise BadSDAFile error if h5file has a bad SDA attribute. """
+    """ Raise BadSDAFile error if h5file has a bad SDA attribute.
+
+    This assumes that the attr is stored as bytes. The passed ``is_valid``
+    function should accept the value as a string.
+
+    """
     name = h5file.filename
     try:
         value = h5file.attrs[attr]
@@ -62,6 +67,7 @@ def error_if_bad_attr(h5file, attr, is_valid):
         msg = "File '{}' does not contain '{}' attribute".format(name, attr)
         raise BadSDAFile(msg)
     else:
+        value = value.decode('ascii')
         if not is_valid(value):
             msg = "File '{}' has invalid '{}' attribute".format(name, attr)
             raise BadSDAFile(msg)
@@ -88,7 +94,7 @@ def error_if_bad_header(h5file):
 def error_if_not_writable(h5file):
     """ Raise an IOError if an SDAFile indicates 'Writable' as 'no'. """
     writable = h5file.attrs.get('Writable')
-    if writable == 'no':
+    if writable == b'no':
         msg = "File '{}' is not writable".format(h5file.filename)
         raise IOError(msg)
 
@@ -237,11 +243,51 @@ def is_valid_writable(value):
     return value == 'yes' or value == 'no'
 
 
+def set_encoded(dict_like, **attrs):
+    """ Encode and insert values into a dict-like object. """
+    encoded = {
+        attr: value.encode('ascii') if isinstance(value, str) else value
+        for attr, value in attrs.items()
+    }
+    dict_like.update(encoded)
+
+
+def get_decoded(dict_like, *attrs):
+    """ Retrieve decoded values from a dict-like object if they exist.
+
+    If no attrs are passed, all values are retrieved.
+
+    """
+    # Filter for existing
+    if len(attrs) == 0:
+        items = dict_like.items()
+    else:
+        items = [
+            (attr, dict_like[attr]) for attr in attrs if attr in dict_like
+        ]
+    return {
+        attr: value.decode('ascii') if isinstance(value, bytes) else value
+        for attr, value in items
+    }
+
+
+def update_header(attrs):
+    """ Update a header to verion 1.1. """
+    set_encoded(
+        attrs,
+        FormatVersion='1.1',
+        Updated=get_date_str(),
+    )
+
+
 def write_header(attrs):
-    """ Write default header values to dict-like ``attrs``. """
-    attrs['FileFormat'] = 'SDA'
-    attrs['FormatVersion'] = '1.1'
-    attrs['Writable'] = 'yes'
+    """ Write default, encoded header values to dict-like ``attrs``. """
     date_str = get_date_str()
-    attrs['Created'] = date_str
-    attrs['Updated'] = date_str
+    set_encoded(
+        attrs,
+        FileFormat='SDA',
+        FormatVersion='1.1',
+        Writable='yes',
+        Created=date_str,
+        Updated=date_str,
+    )
