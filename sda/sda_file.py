@@ -319,7 +319,7 @@ class SDAFile(object):
 
         cols = [
             'label', 'RecordType', 'Description', 'Empty', 'Deflate',
-            'Complex', 'ArraySize', 'Sparse', 'RecordSize' 'Class',
+            'Complex', 'ArraySize', 'Sparse', 'RecordSize', 'Class',
             'FieldNames', 'Command',
         ]
         return DataFrame(summary, columns=cols).set_index('label').fillna('')
