@@ -258,6 +258,11 @@ class SDAFile(object):
             original_shape
         )
 
+    def labels(self):
+        """ Get data labels from the archive. """
+        with self._h5file('r') as h5file:
+            return list(h5file.keys())
+
     # Private
     def _insert_data(self, label, data, description, deflate, record_type,
                      is_complex, original_shape):

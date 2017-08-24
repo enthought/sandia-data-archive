@@ -466,3 +466,13 @@ class TestSDAFileDescribe(unittest.TestCase):
 
             # Make sure the 'Updated' attr gets updated
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
+
+
+class TestSDAFileLabels(unittest.TestCase):
+
+    def test_labels(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            sda_file.insert('l0', [0])
+            sda_file.insert('l1', [1])
+            self.assertEqual(sorted(sda_file.labels()), ['l0', 'l1'])
