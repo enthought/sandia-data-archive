@@ -108,9 +108,7 @@ def extract_character(data):
 def extract_complex(data, shape):
     """ Extract complex 'numeric' data from stored form. """
     dtype = data.dtype
-    if dtype == np.float128:
-        c_dtype = np.complex256
-    elif dtype == np.float64:
+    if dtype == np.float64:
         c_dtype = np.complex128
     elif dtype == np.float32:
         c_dtype = np.complex64
