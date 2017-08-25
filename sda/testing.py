@@ -5,6 +5,7 @@ import tempfile
 
 import h5py
 import numpy as np
+from scipy.sparse import coo_matrix
 
 import sda
 
@@ -83,6 +84,13 @@ for val, typ in TEST_SCALARS:
         TEST_ARRAYS.append((np.array(arr), typ))
         TEST_ARRAYS.append((np.array(arr).reshape(2, 2), typ))
 
+
+# Sparse matrix in all forms
+TEST_SPARSE = [coo_matrix((np.arange(5), (np.arange(1, 6), np.arange(2, 7))))]
+TEST_SPARSE.extend([
+    TEST_SPARSE[0].tocsr(), TEST_SPARSE[0].tocsc(), TEST_SPARSE[0].tolil(),
+    TEST_SPARSE[0].tobsr(), TEST_SPARSE[0].todok()
+])
 
 # Unsupported
 TEST_UNSUPPORTED = [

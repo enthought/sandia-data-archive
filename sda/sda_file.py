@@ -17,10 +17,10 @@ import numpy as np
 
 from .utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    error_if_bad_header, error_if_not_writable, extract_character,
-    extract_complex, extract_logical, extract_numeric, extract_sparse,
-    get_decoded, get_empty_for_type, infer_record_type, is_valid_writable,
-    set_encoded, update_header, write_header,
+    coerce_sparse, error_if_bad_header, error_if_not_writable,
+    extract_character, extract_complex, extract_logical, extract_numeric,
+    extract_sparse, get_decoded, get_empty_for_type, infer_record_type,
+    is_valid_writable, set_encoded, update_header, write_header,
 )
 
 
@@ -227,12 +227,15 @@ class SDAFile(object):
         ValueError if the label contains invalid characters
         ValueError if the label exists
 
-        Note
-        ----
+        Notes
+        -----
         This relies on numpy to cast inhomogeneous array-like data to a
         homogeneous type.  It is the responsibility of the caller to homogenize
         the input data if the numpy casting machinery is not sufficient for the
         input data.
+
+        Sparse matrices are converted to COO form for storing. This may be
+        inefficient for some sparse matrices.
 
         """
         self._validate_can_write()
@@ -240,18 +243,18 @@ class SDAFile(object):
         if not isinstance(deflate, (int, np.integer)) or not 0 <= deflate <= 9:
             msg = "'deflate' must be an integer from 0 to 9"
             raise ValueError(msg)
-        record_type, cast_obj = infer_record_type(data)
+        record_type, cast_obj, extra = infer_record_type(data)
         if record_type is None:
             msg = "{!r} is not a supported type".format(data)
             raise ValueError(data)
 
-        is_complex = False
         original_shape = None
         if record_type == 'numeric':
-            if np.iscomplexobj(cast_obj):
-                is_complex = True
+            if extra == 'complex':
                 original_shape = np.atleast_2d(cast_obj).shape
                 cast_obj = coerce_complex(cast_obj)
+            elif extra == 'sparse':
+                cast_obj = coerce_sparse(cast_obj)
             else:
                 cast_obj = coerce_numeric(cast_obj)
         elif record_type == 'logical':
@@ -264,7 +267,7 @@ class SDAFile(object):
             raise RuntimeError(msg)
 
         self._insert_data(
-            label, cast_obj, description, deflate, record_type, is_complex,
+            label, cast_obj, description, deflate, record_type, extra,
             original_shape
         )
 
@@ -349,7 +352,7 @@ class SDAFile(object):
 
     # Private
     def _insert_data(self, label, data, description, deflate, record_type,
-                     is_complex, original_shape):
+                     extra, original_shape):
         """ Insert coerced data of a given type into the h5 file.
 
         """
@@ -382,9 +385,14 @@ class SDAFile(object):
                 compression=compression,
             )
             data_attrs = {}
+            is_numeric = record_type == 'numeric'
+            is_complex = extra == 'complex'
+            is_sparse = extra == 'sparse'
             data_attrs['RecordType'] = record_type
             data_attrs['Empty'] = empty
-            data_attrs['Complex'] = 'yes' if is_complex else 'no'
+            if is_numeric:
+                data_attrs['Complex'] = 'yes' if is_complex else 'no'
+                data_attrs['Sparse'] = 'yes' if is_sparse else 'no'
             if is_complex:
                 data_attrs['ArraySize'] = original_shape
             set_encoded(ds.attrs, **data_attrs)
