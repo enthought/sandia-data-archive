@@ -42,11 +42,14 @@ class TestSDAReference(unittest.TestCase):
         expected.imag = 1
         self.assertArray(label, expected)
 
-    @unittest.skip('sparse not implemented')
     def test_example_A3(self):
+        """ 5x5 sparse matrix """
         label = 'example A3'
-        expected = np.eye(5, dtype=np.float64)
-        self.assertEqual(label, expected)
+        extracted = self.sda_file.extract(label)
+        self.assertEqual(extracted.dtype, np.float64)
+        assert_array_equal(extracted.data, np.ones(5))
+        assert_array_equal(extracted.row, np.arange(5))
+        assert_array_equal(extracted.col, np.arange(5))
 
     def test_example_A4(self):
         """ Empty array """
@@ -101,13 +104,13 @@ class TestSDAReference(unittest.TestCase):
         self.assertUnsupported(label)
 
     def assertArray(self, label, expected):
-        data = self.sda_file.extract(label)
-        self.assertEqual(data.dtype, expected.dtype)
-        assert_array_equal(data, expected)
+        extracted = self.sda_file.extract(label)
+        self.assertEqual(extracted.dtype, expected.dtype)
+        assert_array_equal(extracted, expected)
 
     def assertScalar(self, label, expected):
-        data = self.sda_file.extract(label)
-        self.assertEqual(data, expected)
+        extracted = self.sda_file.extract(label)
+        self.assertEqual(extracted, expected)
 
     def assertUnsupported(self, label):
         with self.assertRaises(ValueError):

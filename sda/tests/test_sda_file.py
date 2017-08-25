@@ -5,6 +5,7 @@ import unittest
 
 import numpy as np
 from numpy.testing import assert_array_equal, assert_equal
+from scipy.sparse import coo_matrix
 
 from sda.exceptions import BadSDAFile
 from sda.sda_file import SDAFile
@@ -320,11 +321,6 @@ class TestSDAFileInsert(unittest.TestCase):
                     Complex='no', Sparse='yes',
                 )
 
-            label = 'test_nan'
-            deflate = 0
-            sda_file.insert(label, np.nan, label, deflate)
-            self.assertRecord(sda_file, 'numeric', label, deflate, 'yes', None)
-
     def test_unsupported(self):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
@@ -434,6 +430,23 @@ class TestSDAFileExtract(unittest.TestCase):
                     extracted = sda_file.extract(label)
                     self.assertEqual(data.dtype, extracted.dtype)
                     assert_array_equal(extracted, data)
+
+            sda_file.insert('empty', np.array([], dtype=float))
+            self.assertTrue(np.isnan(sda_file.extract('empty')))
+
+    def test_sparse(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            for i, data in enumerate(TEST_SPARSE):
+                label = 'test' + str(i)
+                sda_file.insert(label, data)
+                expected = data.tocoo()
+                extracted = sda_file.extract(label)
+                self.assertIsInstance(extracted, coo_matrix)
+                self.assertEqual(expected.dtype, extracted.dtype)
+                assert_array_equal(expected.data, extracted.data)
+                assert_array_equal(expected.row, extracted.row)
+                assert_array_equal(expected.col, extracted.col)
 
             sda_file.insert('empty', np.array([], dtype=float))
             self.assertTrue(np.isnan(sda_file.extract('empty')))

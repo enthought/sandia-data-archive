@@ -177,7 +177,9 @@ class SDAFile(object):
             if group_attrs['Empty'] == 'yes':
                 return get_empty_for_type(record_type)
             ds = g[label]
-            data_attrs = get_decoded(ds.attrs, 'Complex', 'ArraySize')
+            data_attrs = get_decoded(
+                ds.attrs, 'Complex', 'ArraySize', 'Sparse'
+            )
             complex_flag = data_attrs.get('Complex', 'no')
             sparse_flag = data_attrs.get('Sparse', 'no')
             shape = data_attrs.get('ArraySize', None)
