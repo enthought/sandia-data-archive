@@ -182,17 +182,20 @@ class TestUtils(unittest.TestCase):
                 self.assertEqual(data.dtype, extracted.dtype)
 
     def test_extract_sparse(self):
-        row = np.array([3, 4, 5, 6])
-        col = np.array([0, 1, 1, 4])
-        data = np.array([3, 5, 6, 10])
+        row = np.array([0, 2])
+        col = np.array([1, 2])
+        data = np.array([1, 4])
 
         stored = np.array([row + 1, col + 1, data])  # one-based indexing
         extracted = extract_sparse(stored)
+        expected = np.array([
+            [0, 1, 0],
+            [0, 0, 0],
+            [0, 0, 4],
+        ])
 
         self.assertIsInstance(extracted, coo_matrix)
-        assert_array_equal(extracted.row, row)
-        assert_array_equal(extracted.col, col)
-        assert_array_equal(extracted.data, data)
+        assert_array_equal(extracted.toarray(), expected)
 
     def test_get_date_str(self):
         dt = datetime.datetime(2017, 8, 18, 2, 22, 11)
@@ -311,9 +314,7 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(record_type, 'numeric')
             self.assertEqual(extra, 'sparse')
             self.assertIsInstance(cast_obj, coo_matrix)
-            assert_array_equal(cast_obj.row, coo.row)
-            assert_array_equal(cast_obj.col, coo.col)
-            assert_array_equal(cast_obj.data, coo.data)
+            assert_array_equal(cast_obj.toarray(), coo.toarray())
 
         # Unsupported
         for obj in TEST_UNSUPPORTED:

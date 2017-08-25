@@ -440,13 +440,10 @@ class TestSDAFileExtract(unittest.TestCase):
             for i, data in enumerate(TEST_SPARSE):
                 label = 'test' + str(i)
                 sda_file.insert(label, data)
-                expected = data.tocoo()
                 extracted = sda_file.extract(label)
                 self.assertIsInstance(extracted, coo_matrix)
-                self.assertEqual(expected.dtype, extracted.dtype)
-                assert_array_equal(expected.data, extracted.data)
-                assert_array_equal(expected.row, extracted.row)
-                assert_array_equal(expected.col, extracted.col)
+                self.assertEqual(extracted.dtype, data.dtype)
+                assert_array_equal(extracted.toarray(), data.toarray())
 
             sda_file.insert('empty', np.array([], dtype=float))
             self.assertTrue(np.isnan(sda_file.extract('empty')))

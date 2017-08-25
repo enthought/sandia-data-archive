@@ -46,10 +46,7 @@ class TestSDAReference(unittest.TestCase):
         """ 5x5 sparse matrix """
         label = 'example A3'
         extracted = self.sda_file.extract(label)
-        self.assertEqual(extracted.dtype, np.float64)
-        assert_array_equal(extracted.data, np.ones(5))
-        assert_array_equal(extracted.row, np.arange(5))
-        assert_array_equal(extracted.col, np.arange(5))
+        assert_array_equal(extracted.toarray(), np.eye(5))
 
     def test_example_A4(self):
         """ Empty array """
