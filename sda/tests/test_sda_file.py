@@ -5,16 +5,17 @@ import unittest
 
 import numpy as np
 from numpy.testing import assert_array_equal, assert_equal
+from scipy.sparse import coo_matrix
 
 from sda.exceptions import BadSDAFile
 from sda.sda_file import SDAFile
 from sda.testing import (
-    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_SCALARS, TEST_UNSUPPORTED,
-    temporary_file, temporary_h5file
+    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_SCALARS, TEST_SPARSE,
+    TEST_UNSUPPORTED, temporary_file, temporary_h5file
 )
 from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    get_decoded, set_encoded, write_header
+    coerce_sparse, get_decoded, set_encoded, write_header
 )
 
 
@@ -297,13 +298,28 @@ class TestSDAFileInsert(unittest.TestCase):
                     expected = coerce_numeric(obj)
                 self.assertRecord(
                     sda_file, 'numeric', label, deflate, 'no', expected,
-                    Complex='yes' if is_complex else 'no'
+                    Complex='yes' if is_complex else 'no',
+                    Sparse='no'
                 )
 
             label = 'test_nan'
             deflate = 0
             sda_file.insert(label, np.nan, label, deflate)
             self.assertRecord(sda_file, 'numeric', label, deflate, 'yes', None)
+
+    def test_sparse(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            for i, obj in enumerate(TEST_SPARSE):
+                label = 'test' + str(i)
+                deflate = i % 10
+                sda_file.insert(label, obj, label, deflate)
+                expected = coerce_sparse(obj.tocoo())
+                self.assertRecord(
+                    sda_file, 'numeric', label, deflate, 'no', expected,
+                    Complex='no', Sparse='yes',
+                )
 
     def test_unsupported(self):
         with temporary_file() as file_path:
@@ -414,6 +430,20 @@ class TestSDAFileExtract(unittest.TestCase):
                     extracted = sda_file.extract(label)
                     self.assertEqual(data.dtype, extracted.dtype)
                     assert_array_equal(extracted, data)
+
+            sda_file.insert('empty', np.array([], dtype=float))
+            self.assertTrue(np.isnan(sda_file.extract('empty')))
+
+    def test_sparse(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            for i, data in enumerate(TEST_SPARSE):
+                label = 'test' + str(i)
+                sda_file.insert(label, data)
+                extracted = sda_file.extract(label)
+                self.assertIsInstance(extracted, coo_matrix)
+                self.assertEqual(extracted.dtype, data.dtype)
+                assert_array_equal(extracted.toarray(), data.toarray())
 
             sda_file.insert('empty', np.array([], dtype=float))
             self.assertTrue(np.isnan(sda_file.extract('empty')))

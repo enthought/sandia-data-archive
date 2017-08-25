@@ -5,6 +5,7 @@ import re
 import time
 
 import numpy as np
+from scipy.sparse import coo_matrix, issparse
 
 from .exceptions import BadSDAFile
 
@@ -34,7 +35,7 @@ def coerce_character(data):
 
 
 def coerce_complex(data):
-    """ Coerce complex numeric types """
+    """ Coerce complex 'numeric' data """
     data = np.asarray(data).ravel(order='F')
     return np.array([data.real, data.imag])
 
@@ -51,6 +52,16 @@ def coerce_logical(data):
 def coerce_numeric(data):
     """ Coerce 'numeric' data to stored form. """
     return data
+
+
+def coerce_sparse(data):
+    """ Coerce sparse 'numeric' data.
+
+    Input is expected to coo_matrix.
+
+    """
+    # 3 x N, [row, column, value], 1-based
+    return np.array([data.row + 1, data.col + 1, data.data])
 
 
 def error_if_bad_attr(h5file, attr, is_valid):
@@ -133,6 +144,15 @@ def extract_numeric(data):
     return data
 
 
+def extract_sparse(data):
+    """ Extract sparse 'numeric' data from stored form. """
+    row, col, data = data
+    # Fix 1-based indexing from MATLAB
+    row -= 1
+    col -= 1
+    return coo_matrix((data, (row, col)))
+
+
 def get_date_str(dt=None):
     """ Get a valid date string from a datetime, or current time. """
     if dt is None:
@@ -181,34 +201,47 @@ def infer_record_type(obj):
     cast_obj :
         The object if scalar, the object cast as a numpy array if not, or None
         the type is unsupported.
+    extra :
+        Extra information about the type. This may be None, 'sparse' or
+        'complex' for 'numeric' types, and will be None in all other cases.
 
     """
+    if issparse(obj):
+        if obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
+            return None, None, None
+        return 'numeric', obj.tocoo(), 'sparse'
+
+    if np.iscomplexobj(obj):
+        if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
+            return None, None, None
+        return 'numeric', obj, 'complex'
+
     if np.isscalar(obj):
         check = isinstance
         cast_obj = obj
 
         if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return None, None
+            return None, None, None
 
     else:
         check = issubclass
         cast_obj = np.asarray(obj)
         if cast_obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return None, None
+            return None, None, None
 
         obj = cast_obj.dtype.type
 
     if check(obj, (bool, np.bool_)):
-        return 'logical', cast_obj
+        return 'logical', cast_obj, None
 
-    if check(obj, (int, np.long, float, complex, np.number)):
-        return 'numeric', cast_obj
+    if check(obj, (int, np.long, float, np.number)):
+        return 'numeric', cast_obj, None
 
     # Only accept strings, not arrays of strings
     if isinstance(obj, (str, np.unicode)):  # Numpy strings are also str
-        return 'character', cast_obj
+        return 'character', cast_obj, None
 
-    return None, None
+    return None, None, None
 
 
 def is_valid_date(date_str):

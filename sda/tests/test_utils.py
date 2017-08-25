@@ -4,19 +4,21 @@ import unittest
 
 import numpy as np
 from numpy.testing import assert_array_equal
+from scipy.sparse import coo_matrix
 
 from sda.exceptions import BadSDAFile
 from sda.testing import (
-    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_SCALARS, TEST_UNSUPPORTED,
-    temporary_h5file
+    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_SCALARS, TEST_SPARSE,
+    TEST_UNSUPPORTED, temporary_h5file
 )
 from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    error_if_bad_attr, error_if_bad_header, error_if_not_writable,
-    extract_character, extract_complex, extract_logical, extract_numeric,
-    get_date_str, get_decoded, get_empty_for_type, infer_record_type,
-    is_valid_date, is_valid_file_format, is_valid_format_version,
-    is_valid_writable, set_encoded, update_header, write_header
+    coerce_sparse, error_if_bad_attr, error_if_bad_header,
+    error_if_not_writable, extract_character, extract_complex, extract_logical,
+    extract_numeric, extract_sparse, get_date_str, get_decoded,
+    get_empty_for_type, infer_record_type, is_valid_date, is_valid_file_format,
+    is_valid_format_version, is_valid_writable, set_encoded, update_header,
+    write_header
 )
 
 
@@ -78,6 +80,16 @@ class TestUtils(unittest.TestCase):
                 coerced = coerce_numeric(data)
                 assert_array_equal(coerced, data)
                 self.assertEqual(coerced.dtype, data.dtype)
+
+    def test_coerce_sparse(self):
+        row = np.array([3, 4, 5, 6])
+        col = np.array([0, 1, 1, 4])
+        data = np.array([3, 5, 6, 10])
+
+        obj = coo_matrix((data, (row, col)))
+        coerced = coerce_sparse(obj)
+        expected = np.array([row + 1, col + 1, data])
+        assert_array_equal(coerced, expected)
 
     def test_error_if_bad_attr(self):
         with temporary_h5file() as h5file:
@@ -168,6 +180,22 @@ class TestUtils(unittest.TestCase):
                 extracted = extract_numeric(data)
                 assert_array_equal(extracted, data)
                 self.assertEqual(data.dtype, extracted.dtype)
+
+    def test_extract_sparse(self):
+        row = np.array([0, 2])
+        col = np.array([1, 2])
+        data = np.array([1, 4])
+
+        stored = np.array([row + 1, col + 1, data])  # one-based indexing
+        extracted = extract_sparse(stored)
+        expected = np.array([
+            [0, 1, 0],
+            [0, 0, 0],
+            [0, 0, 4],
+        ])
+
+        self.assertIsInstance(extracted, coo_matrix)
+        assert_array_equal(extracted.toarray(), expected)
 
     def test_get_date_str(self):
         dt = datetime.datetime(2017, 8, 18, 2, 22, 11)
@@ -260,20 +288,37 @@ class TestUtils(unittest.TestCase):
         # scalars
         for obj, typ in TEST_SCALARS:
             msg = 'record type of {!r} != {}'.format(obj, typ)
-            record_type, cast_obj = infer_record_type(obj)
+            record_type, cast_obj, extra = infer_record_type(obj)
             self.assertEqual(record_type, typ, msg=msg)
             self.assertEqual(cast_obj, obj)
+            if np.iscomplexobj(obj):
+                self.assertEqual(extra, 'complex')
+            else:
+                self.assertIsNone(extra)
 
         # lists, tuples, and arrays
         for obj, typ in TEST_ARRAYS:
             msg = 'record type of {!r} != {}'.format(obj, typ)
-            record_type, cast_obj = infer_record_type(obj)
+            record_type, cast_obj, extra = infer_record_type(obj)
             self.assertEqual(record_type, typ, msg=msg)
             assert_array_equal(cast_obj, np.asarray(obj))
+            if np.iscomplexobj(obj):
+                self.assertEqual(extra, 'complex')
+            else:
+                self.assertIsNone(extra)
+
+        # sparse
+        coo = TEST_SPARSE[0]
+        for obj in TEST_SPARSE:
+            record_type, cast_obj, extra = infer_record_type(obj)
+            self.assertEqual(record_type, 'numeric')
+            self.assertEqual(extra, 'sparse')
+            self.assertIsInstance(cast_obj, coo_matrix)
+            assert_array_equal(cast_obj.toarray(), coo.toarray())
 
         # Unsupported
         for obj in TEST_UNSUPPORTED:
             msg = 'record type of {!r} is not None'.format(obj)
-            record_type, cast_obj = infer_record_type(obj)
+            record_type, cast_obj, extra = infer_record_type(obj)
             self.assertIsNone(record_type, msg=msg)
             self.assertIsNone(cast_obj)
