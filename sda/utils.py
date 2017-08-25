@@ -5,6 +5,7 @@ import re
 import time
 
 import numpy as np
+from scipy.sparse import coo_matrix
 
 from .exceptions import BadSDAFile
 
@@ -131,6 +132,15 @@ def extract_logical(data):
 def extract_numeric(data):
     """ Extract 'numeric' data from stored form. """
     return data
+
+
+def extract_sparse(data):
+    """ Extract sparse 'numeric' data from stored form. """
+    row, col, data = data
+    # Fix 1-based indexing from MATLAB
+    row -= 1
+    col -= 1
+    return coo_matrix((data, (row, col)))
 
 
 def get_date_str(dt=None):

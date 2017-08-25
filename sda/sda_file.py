@@ -18,9 +18,9 @@ import numpy as np
 from .utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
     error_if_bad_header, error_if_not_writable, extract_character,
-    extract_complex, extract_logical, extract_numeric, get_decoded,
-    get_empty_for_type, infer_record_type, is_valid_writable, set_encoded,
-    update_header, write_header,
+    extract_complex, extract_logical, extract_numeric, extract_sparse,
+    get_decoded, get_empty_for_type, infer_record_type, is_valid_writable,
+    set_encoded, update_header, write_header,
 )
 
 
@@ -153,6 +153,12 @@ class SDAFile(object):
         label : str
             The data label.
 
+        Notes
+        -----
+        Sparse numeric data is extracted as scipy.sparse.coo_matrix. This
+        format does not support all numpy operations. See the
+        ``scipy.sparse.coo_matrix`` documentation for details.
+
         Raises
         ------
         ValueError if the label contains invalid characters
@@ -173,11 +179,14 @@ class SDAFile(object):
             ds = g[label]
             data_attrs = get_decoded(ds.attrs, 'Complex', 'ArraySize')
             complex_flag = data_attrs.get('Complex', 'no')
+            sparse_flag = data_attrs.get('Sparse', 'no')
             shape = data_attrs.get('ArraySize', None)
             data = ds[()]
 
         if record_type == 'numeric':
-            if complex_flag == 'yes':
+            if sparse_flag == 'yes':  # FIXME - add complex sparse
+                extracted = extract_sparse(data)
+            elif complex_flag == 'yes':
                 extracted = extract_complex(data, shape.astype(int))
             else:
                 extracted = extract_numeric(data)

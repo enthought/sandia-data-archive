@@ -4,6 +4,7 @@ import unittest
 
 import numpy as np
 from numpy.testing import assert_array_equal
+from scipy.sparse import coo_matrix
 
 from sda.exceptions import BadSDAFile
 from sda.testing import (
@@ -14,9 +15,10 @@ from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
     error_if_bad_attr, error_if_bad_header, error_if_not_writable,
     extract_character, extract_complex, extract_logical, extract_numeric,
-    get_date_str, get_decoded, get_empty_for_type, infer_record_type,
-    is_valid_date, is_valid_file_format, is_valid_format_version,
-    is_valid_writable, set_encoded, update_header, write_header
+    extract_sparse, get_date_str, get_decoded, get_empty_for_type,
+    infer_record_type, is_valid_date, is_valid_file_format,
+    is_valid_format_version, is_valid_writable, set_encoded, update_header,
+    write_header
 )
 
 
@@ -168,6 +170,19 @@ class TestUtils(unittest.TestCase):
                 extracted = extract_numeric(data)
                 assert_array_equal(extracted, data)
                 self.assertEqual(data.dtype, extracted.dtype)
+
+    def test_extract_sparse(self):
+        row = np.array([3, 4, 5, 6])
+        col = np.array([0, 1, 1, 4])
+        data = np.array([3, 5, 6, 10])
+
+        stored = np.array([row + 1, col + 1, data])  # one-based indexing
+        extracted = extract_sparse(stored)
+
+        self.assertIsInstance(extracted, coo_matrix)
+        assert_array_equal(extracted.row, row)
+        assert_array_equal(extracted.col, col)
+        assert_array_equal(extracted.data, data)
 
     def test_get_date_str(self):
         dt = datetime.datetime(2017, 8, 18, 2, 22, 11)

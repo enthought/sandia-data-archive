@@ -44,7 +44,9 @@ class TestSDAReference(unittest.TestCase):
 
     @unittest.skip('sparse not implemented')
     def test_example_A3(self):
-        pass
+        label = 'example A3'
+        expected = np.eye(5, dtype=np.float64)
+        self.assertEqual(label, expected)
 
     def test_example_A4(self):
         """ Empty array """
