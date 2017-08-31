@@ -17,10 +17,11 @@ import numpy as np
 
 from .utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    coerce_sparse, error_if_bad_header, error_if_not_writable,
-    extract_character, extract_complex, extract_logical, extract_numeric,
-    extract_sparse, get_decoded, get_empty_for_type, infer_record_type,
-    is_valid_writable, set_encoded, update_header, write_header,
+    coerce_sparse, coerce_sparse_complex, error_if_bad_header,
+    error_if_not_writable, extract_character, extract_complex, extract_logical,
+    extract_numeric, extract_sparse, extract_sparse_complex, get_decoded,
+    get_empty_for_type, infer_record_type, is_valid_writable, set_encoded,
+    update_header, write_header,
 )
 
 
@@ -186,8 +187,11 @@ class SDAFile(object):
             data = ds[()]
 
         if record_type == 'numeric':
-            if sparse_flag == 'yes':  # FIXME - add complex sparse
-                extracted = extract_sparse(data)
+            if sparse_flag == 'yes':
+                if complex_flag == 'yes':
+                    extracted = extract_sparse_complex(data, shape.astype(int))
+                else:
+                    extracted = extract_sparse(data)
             elif complex_flag == 'yes':
                 extracted = extract_complex(data, shape.astype(int))
             else:
@@ -257,6 +261,9 @@ class SDAFile(object):
                 cast_obj = coerce_complex(cast_obj)
             elif extra == 'sparse':
                 cast_obj = coerce_sparse(cast_obj)
+            elif extra == 'sparse+complex':
+                original_shape = cast_obj.shape
+                cast_obj = coerce_sparse_complex(cast_obj)
             else:
                 cast_obj = coerce_numeric(cast_obj)
         elif record_type == 'logical':
@@ -388,8 +395,8 @@ class SDAFile(object):
             )
             data_attrs = {}
             is_numeric = record_type == 'numeric'
-            is_complex = extra == 'complex'
-            is_sparse = extra == 'sparse'
+            is_complex = extra is not None and extra.endswith('complex')
+            is_sparse = extra is not None and extra.startswith('sparse')
             data_attrs['RecordType'] = record_type
             data_attrs['Empty'] = empty
             if is_numeric:
