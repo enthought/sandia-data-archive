@@ -92,6 +92,16 @@ TEST_SPARSE.extend([
     TEST_SPARSE[0].tobsr(), TEST_SPARSE[0].todok()
 ])
 
+TEST_SPARSE_COMPLEX = [
+    coo_matrix((np.arange(5) * (1 + 2j), (np.arange(1, 6), np.arange(2, 7))))
+]
+TEST_SPARSE_COMPLEX.extend([
+    TEST_SPARSE_COMPLEX[0].tocsr(), TEST_SPARSE_COMPLEX[0].tocsc(),
+    TEST_SPARSE_COMPLEX[0].tolil(), TEST_SPARSE_COMPLEX[0].tobsr(),
+    TEST_SPARSE_COMPLEX[0].todok()
+])
+
+
 # Unsupported
 TEST_UNSUPPORTED = [
     np.array(['hi', 'hello']),  # no arrays of strings

@@ -55,13 +55,24 @@ def coerce_numeric(data):
 
 
 def coerce_sparse(data):
-    """ Coerce sparse 'numeric' data.
+    """ Coerce sparse 'numeric' data to stored form.
 
     Input is expected to coo_matrix.
 
     """
     # 3 x N, [row, column, value], 1-based
     return np.array([data.row + 1, data.col + 1, data.data])
+
+
+def coerce_sparse_complex(data):
+    """ Coerse sparse and complex 'numeric data to stored form.
+
+    Input is expected to coo_matrix.
+
+    """
+    indices = np.ravel_multi_index((data.row, data.col), data.shape)
+    coerced = coerce_complex(data.data)
+    return np.vstack([indices + 1, coerced])  # 1-based
 
 
 def error_if_bad_attr(h5file, attr, is_valid):
@@ -147,9 +158,19 @@ def extract_numeric(data):
 def extract_sparse(data):
     """ Extract sparse 'numeric' data from stored form. """
     row, col, data = data
-    # Fix 1-based indexing from MATLAB
+    # Fix 1-based indexing
     row -= 1
     col -= 1
+    return coo_matrix((data, (row, col)))
+
+
+def extract_sparse_complex(data, shape):
+    """ Extract sparse 'numeric' data from stored form. """
+    index = data[0].astype(np.int64)
+    # Fix 1-based indexing from MATLAB
+    index -= 1
+    data = extract_complex(data[1:], (data.shape[1],))
+    row, col = np.unravel_index(index, shape)
     return coo_matrix((data, (row, col)))
 
 
@@ -202,14 +223,18 @@ def infer_record_type(obj):
         The object if scalar, the object cast as a numpy array if not, or None
         the type is unsupported.
     extra :
-        Extra information about the type. This may be None, 'sparse' or
-        'complex' for 'numeric' types, and will be None in all other cases.
+        Extra information about the type. This may be None, 'sparse',
+        'complex', or 'sparse+complex' for 'numeric' types, and will be None in
+        all other cases.
 
     """
     if issparse(obj):
         if obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
-        return 'numeric', obj.tocoo(), 'sparse'
+        extra = 'sparse'
+        if np.issubdtype(obj.dtype, np.complexfloating):
+            extra += '+complex'
+        return 'numeric', obj.tocoo(), extra
 
     if np.iscomplexobj(obj):
         if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:

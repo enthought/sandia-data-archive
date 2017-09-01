@@ -9,14 +9,15 @@ from scipy.sparse import coo_matrix
 from sda.exceptions import BadSDAFile
 from sda.testing import (
     BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_SCALARS, TEST_SPARSE,
-    TEST_UNSUPPORTED, temporary_h5file
+    TEST_SPARSE_COMPLEX, TEST_UNSUPPORTED, temporary_h5file
 )
 from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    coerce_sparse, error_if_bad_attr, error_if_bad_header,
-    error_if_not_writable, extract_character, extract_complex, extract_logical,
-    extract_numeric, extract_sparse, get_date_str, get_decoded,
-    get_empty_for_type, infer_record_type, is_valid_date, is_valid_file_format,
+    coerce_sparse, coerce_sparse_complex, error_if_bad_attr,
+    error_if_bad_header, error_if_not_writable, extract_character,
+    extract_complex, extract_logical, extract_numeric, extract_sparse,
+    extract_sparse_complex, get_date_str, get_decoded, get_empty_for_type,
+    infer_record_type, is_valid_date, is_valid_file_format,
     is_valid_format_version, is_valid_writable, set_encoded, update_header,
     write_header
 )
@@ -84,11 +85,22 @@ class TestUtils(unittest.TestCase):
     def test_coerce_sparse(self):
         row = np.array([3, 4, 5, 6])
         col = np.array([0, 1, 1, 4])
-        data = np.array([3, 5, 6, 10])
+        data = row + col
 
         obj = coo_matrix((data, (row, col)))
         coerced = coerce_sparse(obj)
         expected = np.array([row + 1, col + 1, data])
+        assert_array_equal(coerced, expected)
+
+    def test_coerce_sparse_complex(self):
+        row = np.array([3, 4, 5, 6])
+        col = np.array([0, 1, 1, 4])
+        data = row + (1 + 1j) * col
+
+        obj = coo_matrix((data, (row, col)))
+        coerced = coerce_sparse_complex(obj)
+        idx = 5 * row + col + 1
+        expected = np.array([idx, data.real, data.imag])
         assert_array_equal(coerced, expected)
 
     def test_error_if_bad_attr(self):
@@ -195,6 +207,19 @@ class TestUtils(unittest.TestCase):
         ])
 
         self.assertIsInstance(extracted, coo_matrix)
+        assert_array_equal(extracted.toarray(), expected)
+
+    def test_extract_sparse_complex(self):
+        row = np.array([3, 4, 5, 6])
+        col = np.array([0, 1, 1, 4])
+        data = row + (1 + 1j) * col
+
+        idx = 5 * row + col + 1
+        stored = np.array([idx, data.real, data.imag])
+        extracted = extract_sparse_complex(stored, (7, 5))
+
+        expected = np.zeros((7, 5), dtype=np.complex128)
+        expected[row, col] = data
         assert_array_equal(extracted.toarray(), expected)
 
     def test_get_date_str(self):
@@ -313,6 +338,15 @@ class TestUtils(unittest.TestCase):
             record_type, cast_obj, extra = infer_record_type(obj)
             self.assertEqual(record_type, 'numeric')
             self.assertEqual(extra, 'sparse')
+            self.assertIsInstance(cast_obj, coo_matrix)
+            assert_array_equal(cast_obj.toarray(), coo.toarray())
+
+        # sparse+complex
+        coo = TEST_SPARSE_COMPLEX[0]
+        for obj in TEST_SPARSE_COMPLEX:
+            record_type, cast_obj, extra = infer_record_type(obj)
+            self.assertEqual(record_type, 'numeric')
+            self.assertEqual(extra, 'sparse+complex')
             self.assertIsInstance(cast_obj, coo_matrix)
             assert_array_equal(cast_obj.toarray(), coo.toarray())
 
