@@ -74,14 +74,12 @@ TEST_SCALARS += [
 ]
 
 
-# lists, tuples, and arrays
+# arrays
 TEST_ARRAYS = []
 for val, typ in TEST_SCALARS:
     if typ != 'character':
-        arr = [val] * 4
+        arr = np.array([val] * 4)
         TEST_ARRAYS.append((arr, typ))
-        TEST_ARRAYS.append((tuple(arr), typ))
-        TEST_ARRAYS.append((np.array(arr), typ))
         TEST_ARRAYS.append((np.array(arr).reshape(2, 2), typ))
 
 
@@ -100,6 +98,14 @@ TEST_SPARSE_COMPLEX.extend([
     TEST_SPARSE_COMPLEX[0].tolil(), TEST_SPARSE_COMPLEX[0].tobsr(),
     TEST_SPARSE_COMPLEX[0].todok()
 ])
+
+
+# lists, tuples
+TEST_CELLS = [
+    ['hello', np.arange(4)],
+    ['hello', [True, np.arange(4)]],
+    ['hello', (True, np.arange(4))],
+]
 
 
 # Unsupported

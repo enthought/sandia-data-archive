@@ -10,13 +10,13 @@ from scipy.sparse import coo_matrix
 from sda.exceptions import BadSDAFile
 from sda.sda_file import SDAFile
 from sda.testing import (
-    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_SCALARS, TEST_SPARSE,
+    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELLS, TEST_SCALARS, TEST_SPARSE,
     TEST_SPARSE_COMPLEX, TEST_UNSUPPORTED, temporary_file, temporary_h5file
 )
 from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    coerce_sparse, coerce_sparse_complex, get_decoded, set_encoded,
-    write_header
+    coerce_primitive, coerce_sparse, coerce_sparse_complex, get_decoded,
+    infer_record_type, is_primitive, set_encoded, write_header
 )
 
 
@@ -210,14 +210,14 @@ class TestSDAFileInsert(unittest.TestCase):
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
                 expected = coerce_character(obj)
-                self.assertRecord(
+                self.assertPrimitiveRecord(
                     sda_file, 'character', label, deflate, 'no', expected
                 )
 
             label = 'test_empty'
             deflate = 0
             sda_file.insert(label, '', label, deflate)
-            self.assertRecord(
+            self.assertPrimitiveRecord(
                 sda_file, 'character', label, deflate, 'yes', None
             )
 
@@ -231,13 +231,15 @@ class TestSDAFileInsert(unittest.TestCase):
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
                 expected = coerce_logical(np.asarray(obj))
-                self.assertRecord(
+                self.assertPrimitiveRecord(
                     sda_file, 'logical', label, deflate, 'no', expected
                 )
 
             arr = np.array([], dtype=bool)
             sda_file.insert('empty', arr, 'empty')
-            self.assertRecord(sda_file, 'logical', 'empty', 0, 'yes', None)
+            self.assertPrimitiveRecord(
+                sda_file, 'logical', 'empty', 0, 'yes', None
+            )
 
     def test_logical_scalar(self):
         values = (obj for (obj, typ) in TEST_SCALARS if typ == 'logical')
@@ -249,7 +251,7 @@ class TestSDAFileInsert(unittest.TestCase):
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
                 expected = 1 if obj else 0
-                self.assertRecord(
+                self.assertPrimitiveRecord(
                     sda_file, 'logical', label, deflate, 'no', expected
                 )
 
@@ -266,19 +268,22 @@ class TestSDAFileInsert(unittest.TestCase):
                 if is_complex:
                     expected = coerce_complex(np.asarray(obj))
                     shape = np.atleast_2d(obj).shape
+                    self.assertPrimitiveRecord(
+                        sda_file, 'numeric', label, deflate, 'no', expected,
+                        Complex='yes' if is_complex else 'no',
+                        ArraySize=shape
+                    )
                 else:
                     expected = coerce_numeric(np.asarray(obj))
-                    shape = None
-                self.assertRecord(
-                    sda_file, 'numeric', label, deflate, 'no', expected,
-                    Complex='yes' if is_complex else 'no',
-                    ArraySize=shape
-                )
+                    self.assertPrimitiveRecord(
+                        sda_file, 'numeric', label, deflate, 'no', expected,
+                        Complex='yes' if is_complex else 'no',
+                    )
 
             label = 'test_empty'
             deflate = 0
-            sda_file.insert(label, [], label, deflate)
-            self.assertRecord(
+            sda_file.insert(label, np.array([]), label, deflate)
+            self.assertPrimitiveRecord(
                 sda_file, 'numeric', label, deflate, 'yes', None,
                 Complex='no'
             )
@@ -297,7 +302,7 @@ class TestSDAFileInsert(unittest.TestCase):
                     expected = coerce_complex(obj)
                 else:
                     expected = coerce_numeric(obj)
-                self.assertRecord(
+                self.assertPrimitiveRecord(
                     sda_file, 'numeric', label, deflate, 'no', expected,
                     Complex='yes' if is_complex else 'no',
                     Sparse='no'
@@ -306,7 +311,9 @@ class TestSDAFileInsert(unittest.TestCase):
             label = 'test_nan'
             deflate = 0
             sda_file.insert(label, np.nan, label, deflate)
-            self.assertRecord(sda_file, 'numeric', label, deflate, 'yes', None)
+            self.assertPrimitiveRecord(
+                sda_file, 'numeric', label, deflate, 'yes', None
+            )
 
     def test_sparse(self):
         with temporary_file() as file_path:
@@ -317,7 +324,7 @@ class TestSDAFileInsert(unittest.TestCase):
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
                 expected = coerce_sparse(obj.tocoo())
-                self.assertRecord(
+                self.assertPrimitiveRecord(
                     sda_file, 'numeric', label, deflate, 'no', expected,
                     Complex='no', Sparse='yes',
                 )
@@ -331,9 +338,27 @@ class TestSDAFileInsert(unittest.TestCase):
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
                 expected = coerce_sparse_complex(obj.tocoo())
-                self.assertRecord(
+                self.assertPrimitiveRecord(
                     sda_file, 'numeric', label, deflate, 'no', expected,
                     Complex='yes', Sparse='yes',
+                )
+
+    def test_cell(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            for i, objs in enumerate(TEST_CELLS):
+                label = 'test' + str(i)
+                deflate = i % 10
+                sda_file.insert(label, objs, label, deflate)
+                self.assertCompositeRecord(
+                    sda_file,
+                    label,
+                    objs,
+                    Deflate=deflate,
+                    RecordType='cell',
+                    Empty='no',
+                    RecordSize=(1, len(objs)),
                 )
 
     def test_unsupported(self):
@@ -347,27 +372,73 @@ class TestSDAFileInsert(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     sda_file.insert(label, obj, label, 0)
 
-            # Make sure the 'Updated' attr does not get updated
+            # Make sure the 'Updated' attr does not change
             self.assertEqual(sda_file.Updated, 'Unmodified')
 
-    def assertRecord(self, sda_file, record_type, label, deflate, empty,
-                     expected, **ds_args):
-        with sda_file._h5file('r') as h5file:
-            g = h5file[label]
-            attrs = get_decoded(g.attrs)
-            self.assertEqual(attrs['RecordType'], record_type)
-            self.assertEqual(attrs['Deflate'], deflate)
-            self.assertEqual(attrs['Description'], label)
-            self.assertEqual(attrs['Empty'], empty)
+    def assertAttrs(self, dict_like, **expected_attrs):
+        attrs = get_decoded(dict_like)
+        for key, value in expected_attrs.items():
+            assert_equal(attrs[key], value)
+        return attrs
 
-            ds = g[label]
-            attrs = get_decoded(ds.attrs)
-            self.assertEqual(attrs['RecordType'], record_type)
-            self.assertEqual(attrs['Empty'], empty)
-            for attr, value in ds_args.items():
-                assert_equal(attrs.get(attr), value)
-            if empty == 'no':
-                assert_equal(ds[()], expected)
+    def assertCompositeRecord(self, sda_file, label, expected, **group_attrs):
+        with sda_file._h5file('r') as h5file:
+            group = h5file[label]
+            self.assertCompositeGroup(group, expected, **group_attrs)
+
+    def assertPrimitiveRecord(self, sda_file, record_type, label, deflate,
+                              empty, expected, **data_attrs):
+        with sda_file._h5file('r') as h5file:
+            group = h5file[label]
+            self.assertAttrs(
+                group.attrs,
+                RecordType=record_type,
+                Deflate=deflate,
+                Description=label,
+                Empty=empty,
+            )
+
+            data_set = group[label]
+            self.assertDataSet(
+                data_set,
+                expected,
+                Empty=empty,
+                RecordType=record_type,
+                **data_attrs
+            )
+
+    def assertDataSet(self, data_set, expected, **data_attrs):
+        attrs = self.assertAttrs(data_set.attrs, **data_attrs)
+        if attrs['Empty'] == 'no':
+            assert_equal(data_set[()], expected)
+
+    def assertCompositeGroup(self, group, expected, **group_attrs):
+        """ Check a composite group """
+        attrs = self.assertAttrs(group.attrs, **group_attrs)
+
+        # Check the data
+        record_type = attrs['RecordType']
+        if record_type == 'cell':
+            labels = [
+                'element {}'.format(i) for i in range(1, len(expected)+1)
+            ]
+        else:
+            labels, expected = zip(*expected.items())
+
+        for label, obj in zip(labels, expected):
+            sub_record_type, data, extra = infer_record_type(obj)
+            if is_primitive(sub_record_type):
+                data, _ = coerce_primitive(sub_record_type, data, extra)
+                data_set = group[label]
+                self.assertDataSet(data_set, data)
+            else:
+                sub_group = group[label]
+                self.assertCompositeGroup(
+                    sub_group,
+                    obj,
+                    RecordType=sub_record_type,
+                    RecordSize=(1, len(obj)),
+                )
 
 
 class TestSDAFileExtract(unittest.TestCase):
@@ -470,6 +541,15 @@ class TestSDAFileExtract(unittest.TestCase):
                 self.assertIsInstance(extracted, coo_matrix)
                 self.assertEqual(extracted.dtype, data.dtype)
                 assert_array_equal(extracted.toarray(), data.toarray())
+
+    def test_cell(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            for i, data in enumerate(TEST_CELLS):
+                label = 'test' + str(i)
+                sda_file.insert(label, data)
+                extracted = sda_file.extract(label)
+                assert_equal(data, extracted)
 
 
 class TestSDAFileDescribe(unittest.TestCase):

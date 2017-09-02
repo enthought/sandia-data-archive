@@ -8,12 +8,12 @@ from scipy.sparse import coo_matrix
 
 from sda.exceptions import BadSDAFile
 from sda.testing import (
-    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_SCALARS, TEST_SPARSE,
+    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELLS, TEST_SCALARS, TEST_SPARSE,
     TEST_SPARSE_COMPLEX, TEST_UNSUPPORTED, temporary_h5file
 )
 from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    coerce_sparse, coerce_sparse_complex, error_if_bad_attr,
+    coerce_primitive, coerce_sparse, coerce_sparse_complex, error_if_bad_attr,
     error_if_bad_header, error_if_not_writable, extract_character,
     extract_complex, extract_logical, extract_numeric, extract_sparse,
     extract_sparse_complex, get_date_str, get_decoded, get_empty_for_type,
@@ -30,6 +30,10 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(coerced.dtype, np.dtype(np.uint8))
         expected = np.array([ord(c) for c in string.printable], np.uint8)
         assert_array_equal(coerced, expected)
+
+    def test_coerce_primitive(self):
+        with self.assertRaises(ValueError):
+            coerce_primitive('foo', 0, None)
 
     def test_coerce_complex(self):
 
@@ -243,6 +247,7 @@ class TestUtils(unittest.TestCase):
             np.array([], dtype=bool), get_empty_for_type('logical')
         )
         self.assertTrue(np.isnan(get_empty_for_type('numeric')))
+        self.assertEqual(get_empty_for_type('cell'), [])
 
     def test_is_valid_date(self):
         self.assertTrue(is_valid_date('18-Aug-2017 02:22:11'))
@@ -321,7 +326,7 @@ class TestUtils(unittest.TestCase):
             else:
                 self.assertIsNone(extra)
 
-        # lists, tuples, and arrays
+        # arrays
         for obj, typ in TEST_ARRAYS:
             msg = 'record type of {!r} != {}'.format(obj, typ)
             record_type, cast_obj, extra = infer_record_type(obj)
@@ -349,6 +354,13 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(extra, 'sparse+complex')
             self.assertIsInstance(cast_obj, coo_matrix)
             assert_array_equal(cast_obj.toarray(), coo.toarray())
+
+        # lists, tuples
+        for objs in TEST_CELLS:
+            record_type, cast_obj, extra = infer_record_type(objs)
+            self.assertEqual(record_type, 'cell')
+            self.assertIsNone(extra)
+            self.assertIs(cast_obj, objs)
 
         # Unsupported
         for obj in TEST_UNSUPPORTED:

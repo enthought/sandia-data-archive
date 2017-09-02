@@ -1,5 +1,6 @@
 """ Utility functions and data. """
 
+import collections
 from datetime import datetime
 import re
 import time
@@ -16,6 +17,11 @@ from .exceptions import BadSDAFile
 DATE_FORMAT = "%d-%b-%Y %H:%M:%S"
 DATE_FORMAT_SHORT = "%d-%b-%Y"
 
+# Record groups
+PRIMITIVE_RECORD_TYPES = ('character', 'logical', 'numeric')
+SUPPORTED_RECORD_TYPES = ('character', 'logical', 'numeric', 'cell')
+
+
 # Regular expression for version string
 VERSION_1_RE = re.compile(r'1\.(?P<sub>\d+)')
 
@@ -26,6 +32,51 @@ UNSUPPORTED_NUMERIC_TYPE_CODES = {
     'g',  # float128
     'e',  # float16
 }
+
+
+def coerce_primitive(record_type, data, extra):
+    """ Coerce a primitive type based on its record type.
+
+    Parameters
+    ----------
+    record_type : str or None
+        The record type.
+    data :
+        The object if scalar, the object cast as a numpy array if not, or None
+        the type is unsupported.
+    extra :
+        Extra information about the type returned by ``infer_record_type``.
+
+    Returns
+    -------
+    coerced_data :
+        The data coerced to storage form.
+    original_shape : tuple or None
+        The original shape of the data. This is not None if coersion changed
+        the shape of the original data.
+
+    """
+    original_shape = None
+    if record_type == 'numeric':
+        if extra == 'complex':
+            original_shape = np.atleast_2d(data).shape
+            data = coerce_complex(data)
+        elif extra == 'sparse':
+            data = coerce_sparse(data)
+        elif extra == 'sparse+complex':
+            original_shape = data.shape
+            data = coerce_sparse_complex(data)
+        else:
+            data = coerce_numeric(data)
+    elif record_type == 'logical':
+        data = coerce_logical(data)
+    elif record_type == 'character':
+        data = coerce_character(data)
+    else:
+        # Should not happen
+        msg = "Unrecognized record type '{}'".format(record_type)
+        raise ValueError(msg)
+    return data, original_shape
 
 
 def coerce_character(data):
@@ -200,6 +251,8 @@ def get_empty_for_type(record_type):
         return ''
     elif record_type == 'logical':
         return np.array([], dtype=bool)
+    elif record_type == 'cell':
+        return []
     else:
         msg = "Record type '{}' cannot be empty".format(record_type)
         raise ValueError(msg)
@@ -208,7 +261,7 @@ def get_empty_for_type(record_type):
 def infer_record_type(obj):
     """ Infer record type of ``obj``.
 
-    Supported types are 'numeric', 'bool', and 'character'.
+    Supported types are 'numeric', 'bool', 'character', and 'cell'.
 
     Parameters
     ----------
@@ -227,7 +280,50 @@ def infer_record_type(obj):
         'complex', or 'sparse+complex' for 'numeric' types, and will be None in
         all other cases.
 
+    Notes
+    -----
+    The inference routines are unambiguous, and require the user to understand
+    the input data in reference to these rules. The user has flexibility to
+    coerce data before attempting to store it to have it be stored as a desired
+    type.
+
+    sequences :
+        Lists, tuples, and thing else that identifies as a collections.Sequence
+        are always inferred to be 'cell' records, no matter the contents.
+
+    numpy arrays :
+        If the dtype is a supported numeric type, then the 'numeric' record
+        type is inferred. Arrays of 'bool' type are inferred to be 'logical'.
+
+    sparse arrays (from scipy.sparse) :
+        These are inferred to be 'numeric' and 'sparse', if the dtype is a type
+        supported for numpy arrays.
+
+    strings :
+        These are always inferred to be 'character' type. An attempt will be
+        made to convert the input to ascii encoded bytes, no matter the
+        underlying encoding. This may result in an encoding exception if the
+        input cannot be ascii encoded.
+
+    non-string scalars :
+        Non-string scalars are inferred to be 'numeric' if numeric, or
+        'logical' if boolean.
+
+    other :
+        Arrays of characters are not supported. Convert to a string.
+        Object arrays are not supported. Cast to another dtype or turn into a
+        list.
+        Anything not listed above is not supported.
+
+
+
     """
+    if isinstance(obj, (str, np.unicode)):  # Numpy string type is a str
+        return 'character', obj, None
+
+    if isinstance(obj, collections.Sequence):
+        return 'cell', obj, None
+
     if issparse(obj):
         if obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
@@ -244,17 +340,16 @@ def infer_record_type(obj):
     if np.isscalar(obj):
         check = isinstance
         cast_obj = obj
-
         if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
-
-    else:
+    elif isinstance(obj, np.ndarray):
         check = issubclass
         cast_obj = np.asarray(obj)
         if cast_obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
-
         obj = cast_obj.dtype.type
+    else:
+        return None, None, None
 
     if check(obj, (bool, np.bool_)):
         return 'logical', cast_obj, None
@@ -262,11 +357,17 @@ def infer_record_type(obj):
     if check(obj, (int, np.long, float, np.number)):
         return 'numeric', cast_obj, None
 
-    # Only accept strings, not arrays of strings
-    if isinstance(obj, (str, np.unicode)):  # Numpy strings are also str
-        return 'character', cast_obj, None
-
     return None, None, None
+
+
+def is_primitive(record_type):
+    """ Check if record type is primitive. """
+    return record_type in PRIMITIVE_RECORD_TYPES
+
+
+def is_supported(record_type):
+    """ Check if record type is supported. """
+    return record_type in SUPPORTED_RECORD_TYPES
 
 
 def is_valid_date(date_str):
