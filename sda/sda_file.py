@@ -1,4 +1,4 @@
-"""Implementation of ``SDAFile`` for working with SDA files.
+""" Implementation of ``SDAFile`` for working with SDA files.
 
 The SDA format was designed to be universal to facilitate data sharing across
 multiple languages. It does contain constructs that are specific to MATLAB.
@@ -193,13 +193,38 @@ class SDAFile(object):
 
         Notes
         -----
-        This relies on numpy to cast inhomogeneous array-like data to a
-        homogeneous type.  It is the responsibility of the caller to homogenize
-        the input data if the numpy casting machinery is not sufficient for the
-        input data.
+        This stores specific data types as described here.
 
-        Sparse matrices are converted to COO form for storing. This may be
-        inefficient for some sparse matrices.
+        sequences :
+            Lists, tuples, and thing else that identifies as a
+            collections.Sequence are stored as 'cell' records, no
+            matter the contents.
+
+        numpy arrays :
+            If the dtype is a supported numeric type, then a numpy array is
+            stored as a 'numeric' record. Arrays of 'bool' type are stored as
+            'logical' records.
+
+        sparse arrays (from scipy.sparse) :
+            These are stored as 'numeric' records if the dtype is a type
+            supported for numpy arrays.
+
+        strings :
+            Strings are stored as 'character' records. An attempt will be
+            made to convert the input to ascii encoded bytes, no matter the
+            underlying encoding. This may result in an encoding exception if
+            the input cannot be ascii encoded.
+
+        non-string scalars :
+            Non-string scalars are stored as 'numeric' if numeric, or 'logical'
+            if boolean.
+
+        other :
+            Arrays of characters are not supported. Convert to a string.
+            Object arrays are not supported. Cast to another dtype or turn into
+            a list.
+
+        Anything not listed above is not supported.
 
         """
         self._validate_can_write()

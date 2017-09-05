@@ -313,9 +313,8 @@ def infer_record_type(obj):
         Arrays of characters are not supported. Convert to a string.
         Object arrays are not supported. Cast to another dtype or turn into a
         list.
-        Anything not listed above is not supported.
 
-
+    Anything not listed above is not supported.
 
     """
     if isinstance(obj, (str, np.unicode)):  # Numpy string type is a str
