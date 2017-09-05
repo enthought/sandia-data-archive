@@ -351,6 +351,10 @@ class TestSDAFileInsert(unittest.TestCase):
                 label = 'test' + str(i)
                 deflate = i % 10
                 sda_file.insert(label, objs, label, deflate)
+                if isinstance(objs, np.ndarray):
+                    record_size = np.atleast_2d(objs).shape
+                else:
+                    record_size = (1, len(objs))
                 self.assertCompositeRecord(
                     sda_file,
                     label,
@@ -358,7 +362,7 @@ class TestSDAFileInsert(unittest.TestCase):
                     Deflate=deflate,
                     RecordType='cell',
                     Empty='no',
-                    RecordSize=(1, len(objs)),
+                    RecordSize=record_size,
                 )
 
     def test_unsupported(self):
@@ -419,8 +423,9 @@ class TestSDAFileInsert(unittest.TestCase):
         # Check the data
         record_type = attrs['RecordType']
         if record_type == 'cell':
+            expected = np.asarray(expected, dtype='object').ravel(order='F')
             labels = [
-                'element {}'.format(i) for i in range(1, len(expected)+1)
+                'element {}'.format(i) for i in range(1, len(expected) + 1)
             ]
         else:
             labels, expected = zip(*expected.items())
@@ -432,12 +437,16 @@ class TestSDAFileInsert(unittest.TestCase):
                 data_set = group[label]
                 self.assertDataSet(data_set, data)
             else:
+                if isinstance(obj, np.ndarray):
+                    record_size = np.atleast_2d(obj).shape
+                else:
+                    record_size = (1, len(obj))
                 sub_group = group[label]
                 self.assertCompositeGroup(
                     sub_group,
                     obj,
                     RecordType=sub_record_type,
-                    RecordSize=(1, len(obj)),
+                    RecordSize=record_size,
                 )
 
 
@@ -549,7 +558,9 @@ class TestSDAFileExtract(unittest.TestCase):
                 label = 'test' + str(i)
                 sda_file.insert(label, data)
                 extracted = sda_file.extract(label)
-                assert_equal(data, extracted)
+                data = np.asarray(data, dtype=object)
+                extracted = np.asarray(data, dtype=object)
+                assert_equal(extracted, data)
 
 
 class TestSDAFileDescribe(unittest.TestCase):

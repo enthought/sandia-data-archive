@@ -105,13 +105,28 @@ TEST_CELLS = [
     ['hello', np.arange(4)],
     ['hello', [True, np.arange(4)]],
     ['hello', (True, np.arange(4))],
+    np.array(['hello', 3, [True, False, True], 3.14], dtype=object),
+    np.array(
+        [
+            ['hello', 3],
+            [[True, False, True], 3.14]
+        ],
+        dtype=object
+    ),
+    np.array(
+        [
+            ['hello', 3],
+            [[True, False, True], 3.14]
+        ],
+        dtype=object,
+        order='F',
+    )
 ]
 
 
 # Unsupported
 TEST_UNSUPPORTED = [
     np.array(['hi', 'hello']),  # no arrays of strings
-    np.array([3, 'hello'], dtype=object),
     lambda x: x**2,
     {0: 0},
     {0},

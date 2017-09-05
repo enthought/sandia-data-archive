@@ -203,7 +203,7 @@ class SDAFile(object):
         numpy arrays :
             If the dtype is a supported numeric type, then a numpy array is
             stored as a 'numeric' record. Arrays of 'bool' type are stored as
-            'logical' records.
+            'logical' records. Object arrays are stored as 'cell' records.
 
         sparse arrays (from scipy.sparse) :
             These are stored as 'numeric' records if the dtype is a type
@@ -361,12 +361,16 @@ class SDAFile(object):
         if is_primitive(record_type):
             return self._extract_primitive_data(grp[label], record_type)
 
-        record_size = attrs.get('RecordSize', None)
-        # FIXME make sure RecordSize is always 1 x something
-        nr = int(record_size[1])
         if record_type == 'cell':
+            record_size = attrs['RecordSize'].astype(int)
+            nr = np.prod(record_size)
             labels = ['element {}'.format(i) for i in range(1, nr + 1)]
-            return self._extract_composite_data(grp, labels)
+            data = self._extract_composite_data(grp, labels)
+            if record_size[0] > 1 or len(record_size) > 2:
+                data = np.array(
+                    data, dtype=object,
+                ).reshape(record_size, order='F')
+            return data
 
     def _extract_composite_data(self, grp, labels):
         """ Extract composite data from a Group object with given labels. """
@@ -415,15 +419,20 @@ class SDAFile(object):
 
         return extracted
 
-    def _insert_composite_data(self, grp, deflate, record_type, data,
-                               extra):
+    def _insert_composite_data(self, grp, deflate, record_type, data, extra):
 
-        num_elements = len(data)
+        if isinstance(data, np.ndarray):
+            record_size = np.atleast_2d(data).shape
+            data = data.ravel(order='F')
+        else:
+            record_size = (1, len(data))
+
+        num_elements = np.prod(record_size)
 
         set_encoded(
             grp.attrs,
             Empty='yes' if num_elements == 0 else 'no',
-            RecordSize=(1, num_elements),
+            RecordSize=record_size,
         )
 
         if record_type == 'cell':

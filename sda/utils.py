@@ -258,6 +258,8 @@ def get_empty_for_type(record_type):
         raise ValueError(msg)
 
 
+# FIXME can have cell arrays of different shapes. Should accept and return
+# object arrays for this purpose.
 def infer_record_type(obj):
     """ Infer record type of ``obj``.
 
@@ -294,6 +296,7 @@ def infer_record_type(obj):
     numpy arrays :
         If the dtype is a supported numeric type, then the 'numeric' record
         type is inferred. Arrays of 'bool' type are inferred to be 'logical'.
+        Arrays of 'object' type are inferred to be 'cell' arrays.
 
     sparse arrays (from scipy.sparse) :
         These are inferred to be 'numeric' and 'sparse', if the dtype is a type
@@ -311,8 +314,6 @@ def infer_record_type(obj):
 
     other :
         Arrays of characters are not supported. Convert to a string.
-        Object arrays are not supported. Cast to another dtype or turn into a
-        list.
 
     Anything not listed above is not supported.
 
@@ -355,6 +356,9 @@ def infer_record_type(obj):
 
     if check(obj, (int, np.long, float, np.number)):
         return 'numeric', cast_obj, None
+
+    if check(obj, np.object_):
+        return 'cell', cast_obj, None
 
     return None, None, None
 
