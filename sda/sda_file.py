@@ -1,10 +1,7 @@
 """ Implementation of ``SDAFile`` for working with SDA files.
 
 The SDA format was designed to be universal to facilitate data sharing across
-multiple languages. It does contain constructs that are specific to MATLAB.
-These constructs, the *function* and *object* data types, cannot be written to
-or read from the ``SDAFile`` interface. However, entries of this type do appear
-when interrogating the contents of an SDA file.
+multiple languages. It does support storing or extracing *function* records.
 
 """
 

@@ -258,8 +258,6 @@ def get_empty_for_type(record_type):
         raise ValueError(msg)
 
 
-# FIXME can have cell arrays of different shapes. Should accept and return
-# object arrays for this purpose.
 def infer_record_type(obj):
     """ Infer record type of ``obj``.
 
