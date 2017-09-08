@@ -483,9 +483,9 @@ class SDAFile(object):
         with self._h5file('r') as h5file:
             for label in labels:
                 label_exists = label in h5file
-            if not can_exist and label_exists:
-                msg = "Label '{}' already exists.".format(label)
-                raise ValueError(msg)
-            if must_exist and not label_exists:
-                msg = "Label item '{}' does not exist".format(label)
-                raise ValueError(msg)
+                if not can_exist and label_exists:
+                    msg = "Label '{}' already exists.".format(label)
+                    raise ValueError(msg)
+                if must_exist and not label_exists:
+                    msg = "Label item '{}' does not exist".format(label)
+                    raise ValueError(msg)
