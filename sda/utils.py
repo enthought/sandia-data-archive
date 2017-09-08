@@ -1,4 +1,10 @@
-""" Utility functions and data. """
+""" Utility functions and data.
+
+The functions in the module work directly on data and metadata. In order to
+make this easy to write and test, functionality that requires direct
+interaction with HDF5 are not included here.
+
+"""
 
 import collections
 from datetime import datetime
@@ -49,7 +55,7 @@ def coerce_primitive(record_type, data, extra):
 
     Returns
     -------
-    coerced_data :
+    coerced :
         The data coerced to storage form.
     original_shape : tuple or None
         The original shape of the data. This is not None if coersion changed
@@ -80,35 +86,96 @@ def coerce_primitive(record_type, data, extra):
 
 
 def coerce_character(data):
-    """ Coerce 'character' data to uint8 stored form. """
+    """ Coerce 'character' data to uint8 stored form
+
+    Parameters
+    ----------
+    data : str
+        Input string
+
+    Returns
+    -------
+    coerced : ndarray
+        The string, encoded as ascii, and stored in a uint8 array
+
+    """
     data = np.frombuffer(data.encode('ascii'), np.uint8)
     return data
 
 
 def coerce_complex(data):
-    """ Coerce complex 'numeric' data """
+    """ Coerce complex 'numeric' data
+
+    Parameters
+    ----------
+    data : array-like or complex
+        Input complex value
+
+    Returns
+    -------
+    coerced : ndarray
+        2xN array containing the real and imaginary values of the input as rows
+        0 and 1. This will have type float32 if the input type is complex64
+        and type float64 if the input type is complex128 (or equivalent).
+
+    """
     data = np.asarray(data).ravel(order='F')
     return np.array([data.real, data.imag])
 
 
 def coerce_logical(data):
-    """ Coerce 'logical' data to uint8 stored form. """
+    """ Coerce 'logical' data to uint8 stored form
+
+    Parameters
+    ----------
+    data : array-like or bool
+        Input boolean value
+
+    Returns
+    -------
+    coerced : ndarray of uint8 or uint8
+        Scalar or array containing the input data coereced to uint8, clipped to
+        0 or 1.
+
+    """
     if np.isscalar(data) or data.shape == ():
-        data = 1 if data else 0
+        data = np.uint8(1 if data else 0)
     else:
         data = data.astype(np.uint8).clip(0, 1)
     return data
 
 
 def coerce_numeric(data):
-    """ Coerce 'numeric' data to stored form. """
+    """ Coerce complex 'numeric' data
+
+    Parameters
+    ----------
+    data : array-like or scalar
+        Integer or floating-point values
+
+    Returns
+    -------
+    data : array-like or scalar
+        This function does not modify the input data.
+
+    """
     return data
 
 
 def coerce_sparse(data):
     """ Coerce sparse 'numeric' data to stored form.
 
-    Input is expected to coo_matrix.
+    Parameters
+    ----------
+    data : scipy.sparse.coo_matrix
+        Input sparse matrix.
+
+    Returns
+    -------
+    coerced : ndarray
+        3xN array containing the rows, columns, and values of the sparse matrix
+        in COO form. Note that the row and column arrays are 1-based to be
+        compatible with MATLAB.
 
     """
     # 3 x N, [row, column, value], 1-based
@@ -116,9 +183,20 @@ def coerce_sparse(data):
 
 
 def coerce_sparse_complex(data):
-    """ Coerse sparse and complex 'numeric data to stored form.
+    """ Coerce sparse and complex 'numeric' data to stored form.
 
-    Input is expected to coo_matrix.
+    Parameters
+    ----------
+    data : scipy.sparse.coo_matrix
+        Input sparse matrix.
+
+    Returns
+    -------
+    coerced : ndarray
+        3xN array containing the index, real, and imaginary values of the
+        sparse complex data. The index is unraveled and 1-based. The original
+        array shape is required to re-ravel the index and reconstitute the
+        sparse, complex data.
 
     """
     indices = np.ravel_multi_index((data.row, data.col), data.shape)
@@ -170,6 +248,53 @@ def error_if_not_writable(h5file):
     if writable == b'no':
         msg = "File '{}' is not writable".format(h5file.filename)
         raise IOError(msg)
+
+
+def extract_primitive(record_type, data, data_attrs):
+    """ Extract primitive data from its raw storage format.
+
+    Parameters
+    -----------
+    data : ndarray
+        Data extracted from hdf5 dataset storage
+    record_type : str
+        The primitive data type
+    data_attrs : dict
+        Attributes associated with the stored dataset
+
+    Returns
+    -------
+    obj :
+        The extracted primitive data
+
+    """
+    complex_flag = data_attrs.get('Complex', 'no')
+    sparse_flag = data_attrs.get('Sparse', 'no')
+    shape = data_attrs.get('ArraySize', None)
+
+    if record_type == 'numeric':
+        if sparse_flag == 'yes':
+            if complex_flag == 'yes':
+                extracted = extract_sparse_complex(data, shape.astype(int))
+            else:
+                extracted = extract_sparse(data)
+        elif complex_flag == 'yes':
+            extracted = extract_complex(data, shape.astype(int))
+        else:
+            extracted = extract_numeric(data)
+        # squeeze leading dimension if this is a MATLAB row array
+        if extracted.ndim == 2 and extracted.shape[0] == 1:
+            # if it's a scalar, go all the way
+            if extracted.shape[1] == 1:
+                extracted = extracted[0, 0]
+            else:
+                extracted = np.squeeze(extracted, axis=0)
+    elif record_type == 'logical':
+        extracted = extract_logical(data)
+    elif record_type == 'character':
+        extracted = extract_character(data)
+
+    return extracted
 
 
 def extract_character(data):

@@ -14,10 +14,9 @@ import numpy as np
 
 from .utils import (
     coerce_primitive, error_if_bad_header, error_if_not_writable,
-    extract_character, extract_complex, extract_logical, extract_numeric,
-    extract_sparse, extract_sparse_complex, get_decoded, get_empty_for_type,
-    infer_record_type, is_primitive, is_supported, is_valid_writable,
-    set_encoded, update_header, write_header,
+    extract_primitive, get_decoded, get_empty_for_type, infer_record_type,
+    is_primitive, is_supported, is_valid_writable, set_encoded, update_header,
+    write_header,
 )
 
 
@@ -163,7 +162,8 @@ class SDAFile(object):
         self._validate_labels(label, must_exist=True)
         with self._h5file('r') as h5file:
             grp = h5file[label]
-            return self._extract_data_from_group(grp, label)
+            attrs = get_decoded(grp.attrs)
+            return self._extract_data_from_group(grp, label, attrs)
 
     def insert(self, label, data, description='', deflate=0):
         """ Insert data into an SDA file.
@@ -342,9 +342,8 @@ class SDAFile(object):
         finally:
             h5file.close()
 
-    def _extract_data_from_group(self, grp, label):
+    def _extract_data_from_group(self, grp, label, attrs):
         """ Extract data from h5 group. ``label`` is the group label. """
-        attrs = get_decoded(grp.attrs, 'RecordType', 'Empty', 'RecordSize')
 
         record_type = attrs['RecordType']
         if not is_supported(record_type):
@@ -356,7 +355,9 @@ class SDAFile(object):
             return get_empty_for_type(record_type)
 
         if is_primitive(record_type):
-            return self._extract_primitive_data(grp[label], record_type)
+            ds = grp[label]
+            data_attrs = get_decoded(ds.attrs)
+            return extract_primitive(record_type, ds[()], data_attrs)
 
         if record_type == 'cell':
             record_size = attrs['RecordSize'].astype(int)
@@ -374,46 +375,13 @@ class SDAFile(object):
         extracted = []
         for label in labels:
             sub_obj = grp[label]
-            attrs = get_decoded(sub_obj.attrs, 'RecordType')
+            attrs = get_decoded(sub_obj.attrs)
             record_type = attrs['RecordType']
             if is_primitive(record_type):
-                element = self._extract_primitive_data(sub_obj, record_type)
+                element = extract_primitive(record_type, sub_obj[()], attrs)
             else:  # composite type
-                element = self._extract_data_from_group(sub_obj, label)
+                element = self._extract_data_from_group(sub_obj, label, attrs)
             extracted.append(element)
-        return extracted
-
-    def _extract_primitive_data(self, ds, record_type):
-        data_attrs = get_decoded(ds.attrs, 'Complex', 'ArraySize', 'Sparse')
-        complex_flag = data_attrs.get('Complex', 'no')
-        sparse_flag = data_attrs.get('Sparse', 'no')
-        shape = data_attrs.get('ArraySize', None)
-
-        if record_type == 'numeric':
-            data = ds[()]
-            if sparse_flag == 'yes':
-                if complex_flag == 'yes':
-                    extracted = extract_sparse_complex(data, shape.astype(int))
-                else:
-                    extracted = extract_sparse(data)
-            elif complex_flag == 'yes':
-                extracted = extract_complex(data, shape.astype(int))
-            else:
-                extracted = extract_numeric(data)
-            # squeeze leading dimension if this is a MATLAB row array
-            if extracted.ndim == 2 and extracted.shape[0] == 1:
-                # if it's a scalar, go all the way
-                if extracted.shape[1] == 1:
-                    extracted = extracted[0, 0]
-                else:
-                    extracted = np.squeeze(extracted, axis=0)
-        elif record_type == 'logical':
-            data = ds[()]
-            extracted = extract_logical(data)
-        elif record_type == 'character':
-            data = ds[()]
-            extracted = extract_character(data)
-
         return extracted
 
     def _insert_composite_data(self, grp, deflate, record_type, data, extra):
