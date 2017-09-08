@@ -58,8 +58,8 @@ def coerce_primitive(record_type, data, extra):
     coerced :
         The data coerced to storage form.
     original_shape : tuple or None
-        The original shape of the data. This is not None if coersion changed
-        the shape of the original data.
+        The original shape of the data. This is only returned for complex and
+        sparse-complex data.
 
     """
     original_shape = None
@@ -264,7 +264,7 @@ def extract_primitive(record_type, data, data_attrs):
 
     Returns
     -------
-    obj :
+    extracted :
         The extracted primitive data
 
     """
@@ -298,27 +298,58 @@ def extract_primitive(record_type, data, data_attrs):
 
 
 def extract_character(data):
-    """ Extract 'character' data from uint8 stored form. """
+    """ Extract 'character' data from uint8 stored form.
+
+    Parameters
+    -----------
+    data : ndarray
+        Array of uint8 ascii encodings
+
+    Returns
+    -------
+    extracted : str
+        Reconstructed ascii string.
+
+    """
     data = data.tobytes().decode('ascii')
     return data
 
 
 def extract_complex(data, shape):
-    """ Extract complex 'numeric' data from stored form. """
-    dtype = data.dtype
-    if dtype == np.float64:
-        c_dtype = np.complex128
-    elif dtype == np.float32:
-        c_dtype = np.complex64
-    extracted = np.empty(shape, dtype=c_dtype, order='F')
-    flat = extracted.ravel(order='F')
-    flat.real = data[0]
-    flat.imag = data[1]
-    return extracted
+    """ Extract complex 'numeric' data.
+
+    Parameters
+    -----------
+    data : ndarray
+        2 x N array containing real and imaginary portions of the complex data.
+    shape : tuple
+        Shape of the extracted array.
+
+    Returns
+    -------
+    extracted : ndarray
+        The extracted complex array.
+
+    """
+    extracted = 1j * data[1]
+    extracted.real = data[0]
+    return extracted.reshape(shape, order='F')
 
 
 def extract_logical(data):
-    """ Extract 'logical' data from uint8 stored form. """
+    """ Extract 'logical' data from uint8 stored form.
+
+    Parameters
+    -----------
+    data : ndarray or scalar
+        Array or scalar of uint8 values clipped to 0 or 1
+
+    Returns
+    -------
+    extracted :
+        The extracted boolean or boolean array
+
+    """
     if np.isscalar(data):
         data = bool(data)
     else:
@@ -327,12 +358,38 @@ def extract_logical(data):
 
 
 def extract_numeric(data):
-    """ Extract 'numeric' data from stored form. """
+    """ Extract 'numeric' data from stored form.
+
+    Parameters
+    -----------
+    data : ndarray or scalar
+        Array or scalar of numeric data
+
+    Returns
+    -------
+    data : ndarray or scalar
+        The input data
+
+    """
     return data
 
 
 def extract_sparse(data):
-    """ Extract sparse 'numeric' data from stored form. """
+    """ Extract sparse 'numeric' data from stored form.
+
+    Parameters
+    -----------
+    data : 3xN ndarray
+        3xN array containing the rows, columns, and values of a sparse matrix
+        in COO form. Note that the row and column arrays must be 1-based to be
+        compatible with MATLAB.
+
+    Returns
+    -------
+    extracted : scipy.sparse.coo_matrix
+        The extracted sparse matrix
+
+    """
     row, col, data = data
     # Fix 1-based indexing
     row -= 1
@@ -341,9 +398,24 @@ def extract_sparse(data):
 
 
 def extract_sparse_complex(data, shape):
-    """ Extract sparse 'numeric' data from stored form. """
+    """ Extract sparse 'numeric' data from stored form.
+
+    Parameters
+    -----------
+    data : ndarray
+        3xN array containing the index, real, and imaginary values of a
+        sparse complex data. The index is unraveled and 1-based.
+    shape : tuple
+        Shape of the extracted array
+
+    Returns
+    -------
+    extracted : coo_matrix
+        The extracted sparse, complex matrix
+
+    """
     index = data[0].astype(np.int64)
-    # Fix 1-based indexing from MATLAB
+    # Fix 1-based indexing
     index -= 1
     data = extract_complex(data[1:], (data.shape[1],))
     row, col = np.unravel_index(index, shape)
