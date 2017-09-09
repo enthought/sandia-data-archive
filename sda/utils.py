@@ -23,10 +23,12 @@ from .exceptions import BadSDAFile
 DATE_FORMAT = "%d-%b-%Y %H:%M:%S"
 DATE_FORMAT_SHORT = "%d-%b-%Y"
 
-# Record groups
+# Record groups.
+# 'structures', 'object', and 'objects' are read- and replace-only
 PRIMITIVE_RECORD_TYPES = ('character', 'logical', 'numeric')
 SUPPORTED_RECORD_TYPES = (
-    'character', 'logical', 'numeric', 'cell', 'structure',
+    'character', 'logical', 'numeric', 'cell', 'structure', 'structures',
+    'object', 'objects',
 )
 
 

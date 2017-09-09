@@ -364,7 +364,7 @@ class SDAFile(object):
             data_attrs = get_decoded(ds.attrs)
             return extract_primitive(record_type, ds[()], data_attrs)
 
-        if record_type == 'cell':
+        if record_type in ('cell', 'structures', 'objects'):
             record_size = attrs['RecordSize'].astype(int)
             nr = np.prod(record_size)
             labels = ['element {}'.format(i) for i in range(1, nr + 1)]
@@ -373,7 +373,7 @@ class SDAFile(object):
                 data = np.array(
                     data, dtype=object,
                 ).reshape(record_size, order='F')
-        elif record_type == 'structure':
+        elif record_type in ('structure', 'object'):
             labels = attrs['FieldNames'].split()
             data = self._extract_composite_data(grp, labels)
             data = dict(zip(labels, data))
@@ -398,7 +398,7 @@ class SDAFile(object):
 
         attrs = {}
 
-        if record_type == 'cell':
+        if record_type in 'cell':
             if isinstance(data, np.ndarray):
                 record_size = np.atleast_2d(data).shape
                 data = data.ravel(order='F')

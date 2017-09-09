@@ -98,7 +98,20 @@ class TestSDAReference(unittest.TestCase):
     def test_example_G(self):
         """ Structure array combining examples A1 and A2 (repeated) """
         label = "example G"
-        self.assertUnsupported(label)
+        extracted = self.sda_file.extract(label)
+        self.assertIsInstance(extracted, np.ndarray)
+        self.assertTrue(np.issubdtype(extracted.dtype, np.object_))
+        self.assertTrue(extracted.shape, (2, 1))
+        el1 = extracted[0, 0]
+        self.assertIsInstance(el1, dict)
+        self.assertEqual(len(el1), 2)
+        assert_array_equal(el1['A1'], EXAMPLE_A1)
+        assert_array_equal(el1['A2'], EXAMPLE_A2)
+        el2 = extracted[1, 0]
+        self.assertIsInstance(el2, dict)
+        self.assertEqual(len(el2), 2)
+        assert_array_equal(el2['A1'], EXAMPLE_A1)
+        assert_array_equal(el2['A2'], EXAMPLE_A2)
 
     def test_example_H(self):
         """ Cell array of structures combining examples A1-A4 """
@@ -121,12 +134,26 @@ class TestSDAReference(unittest.TestCase):
     def test_example_I(self):
         """ Object containing example A1 """
         label = "example I"
-        self.assertUnsupported(label)
+        extracted = self.sda_file.extract(label)
+        self.assertIsInstance(extracted, dict)
+        self.assertEqual(len(extracted), 1)
+        assert_array_equal(extracted['Parameter'], EXAMPLE_A1)
 
     def test_example_J(self):
         """ Object array containing examples A1 and A2 """
         label = "example J"
-        self.assertUnsupported(label)
+        extracted = self.sda_file.extract(label)
+        self.assertIsInstance(extracted, np.ndarray)
+        self.assertTrue(np.issubdtype(extracted.dtype, np.object_))
+        self.assertTrue(extracted.shape, (2, 1))
+        el1 = extracted[0, 0]
+        self.assertIsInstance(el1, dict)
+        self.assertEqual(len(el1), 1)
+        assert_array_equal(el1['Parameter'], EXAMPLE_A1)
+        el2 = extracted[1, 0]
+        self.assertIsInstance(el2, dict)
+        self.assertEqual(len(el2), 1)
+        assert_array_equal(el2['Parameter'], EXAMPLE_A2)
 
     def assertArray(self, label, expected):
         extracted = self.sda_file.extract(label)
