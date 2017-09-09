@@ -8,8 +8,8 @@ from scipy.sparse import coo_matrix
 
 from sda.exceptions import BadSDAFile
 from sda.testing import (
-    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELLS, TEST_SCALARS, TEST_SPARSE,
-    TEST_SPARSE_COMPLEX, TEST_UNSUPPORTED, temporary_h5file
+    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELL, TEST_SCALARS, TEST_SPARSE,
+    TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, temporary_h5file
 )
 from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
@@ -248,6 +248,7 @@ class TestUtils(unittest.TestCase):
         )
         self.assertTrue(np.isnan(get_empty_for_type('numeric')))
         self.assertEqual(get_empty_for_type('cell'), [])
+        self.assertEqual(get_empty_for_type('structure'), {})
 
     def test_is_valid_date(self):
         self.assertTrue(is_valid_date('18-Aug-2017 02:22:11'))
@@ -356,11 +357,18 @@ class TestUtils(unittest.TestCase):
             assert_array_equal(cast_obj.toarray(), coo.toarray())
 
         # lists, tuples
-        for objs in TEST_CELLS:
-            record_type, cast_obj, extra = infer_record_type(objs)
+        for obj in TEST_CELL:
+            record_type, cast_obj, extra = infer_record_type(obj)
             self.assertEqual(record_type, 'cell')
             self.assertIsNone(extra)
-            self.assertIs(cast_obj, objs)
+            self.assertIs(cast_obj, obj)
+
+        # dicts
+        for obj in TEST_STRUCTURE:
+            record_type, cast_obj, extra = infer_record_type(obj)
+            self.assertEqual(record_type, 'structure')
+            self.assertIsNone(extra)
+            self.assertIs(cast_obj, obj)
 
         # Unsupported
         for obj in TEST_UNSUPPORTED:

@@ -175,9 +175,7 @@ class SDAFile(object):
         label : str
             The data label.
         data :
-            The data to insert. 'numeric', 'logical', and 'character' types are
-            supported. Strings are accepted as 'character' type. 'numeric' and
-            'logical' types can be scalar or array-like.
+            The data to insert. See the notes below.
         description : str, optional
             A description to accompany the data
         deflate : int, optional
@@ -195,9 +193,14 @@ class SDAFile(object):
         This stores specific data types as described here.
 
         sequences :
-            Lists, tuples, and thing else that identifies as a
+            Lists, tuples, and anything else that identifies as a
             collections.Sequence are stored as 'cell' records, no
             matter the contents.
+
+        mappings :
+            Dictionaries and anything else that identifies as
+            collections.Mapping and not another type listed here are stored as
+            'structure' records.
 
         numpy arrays :
             If the dtype is a supported numeric type, then a numpy array is
@@ -370,7 +373,12 @@ class SDAFile(object):
                 data = np.array(
                     data, dtype=object,
                 ).reshape(record_size, order='F')
-            return data
+        elif record_type == 'structure':
+            labels = attrs['FieldNames'].split()
+            data = self._extract_composite_data(grp, labels)
+            data = dict(zip(labels, data))
+
+        return data
 
     def _extract_composite_data(self, grp, labels):
         """ Extract composite data from a Group object with given labels. """
@@ -388,38 +396,44 @@ class SDAFile(object):
 
     def _insert_composite_data(self, grp, deflate, record_type, data, extra):
 
-        if isinstance(data, np.ndarray):
-            record_size = np.atleast_2d(data).shape
-            data = data.ravel(order='F')
-        else:
-            record_size = (1, len(data))
-
-        num_elements = np.prod(record_size)
-
-        set_encoded(
-            grp.attrs,
-            Empty='yes' if num_elements == 0 else 'no',
-            RecordSize=record_size,
-        )
+        attrs = {}
 
         if record_type == 'cell':
-            for i, sub_data in enumerate(data, start=1):
-                label = 'element {}'.format(i)
-                sub_rec_type, sub_data, sub_extra = infer_record_type(sub_data)
-                if is_primitive(sub_rec_type):
-                    self._insert_primitive_data(
-                        grp, label, deflate, sub_rec_type, sub_data,
-                        sub_extra
-                    )
-                else:
-                    sub_grp = grp.create_group(label)
-                    set_encoded(
-                        sub_grp.attrs,
-                        RecordType=sub_rec_type
-                    )
-                    self._insert_composite_data(
-                        sub_grp, deflate, sub_rec_type, sub_data, sub_extra
-                    )
+            if isinstance(data, np.ndarray):
+                record_size = np.atleast_2d(data).shape
+                data = data.ravel(order='F')
+            else:
+                record_size = (1, len(data))
+            nr = np.prod(record_size)
+            labels = ['element {}'.format(i) for i in range(1, nr + 1)]
+            attrs['RecordSize'] = record_size
+        elif record_type == 'structure':
+            nr = len(data)
+            data = sorted((str(key), value) for key, value in data.items())
+            labels, data = zip(*data)
+            attrs['FieldNames'] = ' '.join(labels)
+        else:
+            raise ValueError(record_type)
+
+        attrs['Empty'] = 'yes' if nr == 0 else 'no'
+        set_encoded(grp.attrs, **attrs)
+
+        for label, sub_data in zip(labels, data):
+            sub_rec_type, sub_data, sub_extra = infer_record_type(sub_data)
+            if is_primitive(sub_rec_type):
+                self._insert_primitive_data(
+                    grp, label, deflate, sub_rec_type, sub_data,
+                    sub_extra
+                )
+            else:
+                sub_grp = grp.create_group(label)
+                set_encoded(
+                    sub_grp.attrs,
+                    RecordType=sub_rec_type
+                )
+                self._insert_composite_data(
+                    sub_grp, deflate, sub_rec_type, sub_data, sub_extra
+                )
 
     def _insert_primitive_data(self, grp, label, deflate, record_type, data,
                                extra):

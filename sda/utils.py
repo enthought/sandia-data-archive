@@ -25,7 +25,9 @@ DATE_FORMAT_SHORT = "%d-%b-%Y"
 
 # Record groups
 PRIMITIVE_RECORD_TYPES = ('character', 'logical', 'numeric')
-SUPPORTED_RECORD_TYPES = ('character', 'logical', 'numeric', 'cell')
+SUPPORTED_RECORD_TYPES = (
+    'character', 'logical', 'numeric', 'cell', 'structure',
+)
 
 
 # Regular expression for version string
@@ -37,6 +39,15 @@ UNSUPPORTED_NUMERIC_TYPE_CODES = {
     'G',  # complex256
     'g',  # float128
     'e',  # float16
+}
+
+# Empty values for supported types
+EMPTY_FOR_TYPE = {
+    'numeric': np.nan,
+    'character': '',
+    'logical': np.array([], dtype=bool),
+    'cell': [],
+    'structure': {}
 }
 
 
@@ -442,15 +453,9 @@ def get_empty_for_type(record_type):
     ValueError if ``record_type`` does not have an empty entry.
 
     """
-    if record_type == 'numeric':
-        return np.nan
-    elif record_type == 'character':
-        return ''
-    elif record_type == 'logical':
-        return np.array([], dtype=bool)
-    elif record_type == 'cell':
-        return []
-    else:
+    try:
+        return EMPTY_FOR_TYPE[record_type]
+    except KeyError:
         msg = "Record type '{}' cannot be empty".format(record_type)
         raise ValueError(msg)
 
@@ -485,8 +490,14 @@ def infer_record_type(obj):
     type.
 
     sequences :
-        Lists, tuples, and thing else that identifies as a collections.Sequence
-        are always inferred to be 'cell' records, no matter the contents.
+        Lists, tuples, and anything else that identifies as a
+        collections.Sequence are always inferred to be 'cell' records, no
+        matter the contents.
+
+    mappings :
+        Dictionaries and anything else that identifies as
+        collections.Mapping and not another type listed here are inferred to be
+        'structure' records.
 
     numpy arrays :
         If the dtype is a supported numeric type, then the 'numeric' record
@@ -532,6 +543,10 @@ def infer_record_type(obj):
             return None, None, None
         return 'numeric', obj, 'complex'
 
+    if isinstance(obj, collections.Mapping):
+        return 'structure', obj, None
+
+    # numeric and logical scalars and arrays
     if np.isscalar(obj):
         check = isinstance
         cast_obj = obj
