@@ -272,6 +272,8 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(is_valid_matlab_field_label('a0_n1'))
         self.assertTrue(is_valid_matlab_field_label('a0_N1'))
         self.assertTrue(is_valid_matlab_field_label('A0_N1'))
+        self.assertFalse(is_valid_matlab_field_label(''))
+        self.assertFalse(is_valid_matlab_field_label(' '))
         self.assertFalse(is_valid_matlab_field_label('1n0a'))
         self.assertFalse(is_valid_matlab_field_label('A0 N1'))
         self.assertFalse(is_valid_matlab_field_label('_A0N1'))
