@@ -9,6 +9,7 @@ interaction with HDF5 are not included here.
 import collections
 from datetime import datetime
 import re
+import string
 import time
 
 import numpy as np
@@ -23,9 +24,13 @@ from .exceptions import BadSDAFile
 DATE_FORMAT = "%d-%b-%Y %H:%M:%S"
 DATE_FORMAT_SHORT = "%d-%b-%Y"
 
-# Record groups
+# Record groups.
+# 'structures', 'object', and 'objects' are read- and replace-only
 PRIMITIVE_RECORD_TYPES = ('character', 'logical', 'numeric')
-SUPPORTED_RECORD_TYPES = ('character', 'logical', 'numeric', 'cell')
+SUPPORTED_RECORD_TYPES = (
+    'character', 'logical', 'numeric', 'cell', 'structure', 'structures',
+    'object', 'objects',
+)
 
 
 # Regular expression for version string
@@ -37,6 +42,15 @@ UNSUPPORTED_NUMERIC_TYPE_CODES = {
     'G',  # complex256
     'g',  # float128
     'e',  # float16
+}
+
+# Empty values for supported types
+EMPTY_FOR_TYPE = {
+    'numeric': np.nan,
+    'character': '',
+    'logical': np.array([], dtype=bool),
+    'cell': [],
+    'structure': {}
 }
 
 
@@ -442,15 +456,9 @@ def get_empty_for_type(record_type):
     ValueError if ``record_type`` does not have an empty entry.
 
     """
-    if record_type == 'numeric':
-        return np.nan
-    elif record_type == 'character':
-        return ''
-    elif record_type == 'logical':
-        return np.array([], dtype=bool)
-    elif record_type == 'cell':
-        return []
-    else:
+    try:
+        return EMPTY_FOR_TYPE[record_type]
+    except KeyError:
         msg = "Record type '{}' cannot be empty".format(record_type)
         raise ValueError(msg)
 
@@ -485,13 +493,19 @@ def infer_record_type(obj):
     type.
 
     sequences :
-        Lists, tuples, and thing else that identifies as a collections.Sequence
-        are always inferred to be 'cell' records, no matter the contents.
+        Lists, tuples, and anything else that identifies as a
+        collections.Sequence are always inferred to be 'cell' records, no
+        matter the contents.
+
+    mappings :
+        Dictionaries and anything else that identifies as
+        collections.Mapping and not another type listed here are inferred to be
+        'structure' records.
 
     numpy arrays :
         If the dtype is a supported numeric type, then the 'numeric' record
         type is inferred. Arrays of 'bool' type are inferred to be 'logical'.
-        Arrays of 'object' type are inferred to be 'cell' arrays.
+        Arrays of 'object' and string type are inferred to be 'cell' arrays.
 
     sparse arrays (from scipy.sparse) :
         These are inferred to be 'numeric' and 'sparse', if the dtype is a type
@@ -513,6 +527,15 @@ def infer_record_type(obj):
     Anything not listed above is not supported.
 
     """
+
+    # Unwrap scalar arrays to simplify the following
+    is_scalar = np.isscalar(obj)
+    is_array = isinstance(obj, np.ndarray)
+    while is_scalar and is_array:
+        obj = obj.value()
+        is_scalar = np.isscalar(obj)
+        is_array = isinstance(obj, np.ndarray)
+
     if isinstance(obj, (str, np.unicode)):  # Numpy string type is a str
         return 'character', obj, None
 
@@ -532,14 +555,17 @@ def infer_record_type(obj):
             return None, None, None
         return 'numeric', obj, 'complex'
 
-    if np.isscalar(obj):
+    if isinstance(obj, collections.Mapping):
+        return 'structure', obj, None
+
+    # numeric and logical scalars and arrays
+    cast_obj = obj
+    if is_scalar:
         check = isinstance
-        cast_obj = obj
         if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
-    elif isinstance(obj, np.ndarray):
+    elif is_array:
         check = issubclass
-        cast_obj = np.asarray(obj)
         if cast_obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
         obj = cast_obj.dtype.type
@@ -552,7 +578,7 @@ def infer_record_type(obj):
     if check(obj, (int, np.long, float, np.number)):
         return 'numeric', cast_obj, None
 
-    if check(obj, np.object_):
+    if check(obj, (np.object_, np.unicode_, np.str_)):
         return 'cell', cast_obj, None
 
     return None, None, None
@@ -593,6 +619,14 @@ def is_valid_format_version(value):
     return 0 <= int(m.group('sub')) <= 1
 
 
+def is_valid_matlab_field_label(label):
+    """ Check that passed string is a valid MATLAB field label """
+    if not label.startswith(tuple(string.ascii_letters)):
+        return False
+    VALID_CHARS = set(string.ascii_letters + string.digits + "_")
+    return set(label).issubset(VALID_CHARS)
+
+
 def is_valid_writable(value):
     """ Check that writable flag is 'yes' or 'no' """
     return value == 'yes' or value == 'no'
@@ -627,7 +661,7 @@ def get_decoded(dict_like, *attrs):
 
 
 def update_header(attrs):
-    """ Update a header to verion 1.1. """
+    """ Update timestamp and version to 1.1 in a header. """
     set_encoded(
         attrs,
         FormatVersion='1.1',

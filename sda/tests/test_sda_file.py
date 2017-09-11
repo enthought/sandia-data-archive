@@ -10,8 +10,9 @@ from scipy.sparse import coo_matrix
 from sda.exceptions import BadSDAFile
 from sda.sda_file import SDAFile
 from sda.testing import (
-    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELLS, TEST_SCALARS, TEST_SPARSE,
-    TEST_SPARSE_COMPLEX, TEST_UNSUPPORTED, temporary_file, temporary_h5file
+    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELL, TEST_SCALARS, TEST_SPARSE,
+    TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, temporary_file,
+    temporary_h5file
 )
 from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
@@ -200,6 +201,16 @@ class TestSDAFileInsert(unittest.TestCase):
             sda_file.insert('test', [0, 1, 2])
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
+    def test_invalid_structure_key(self):
+        record = [0, 1, 2, {' bad': np.arange(4)}]
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            with self.assertRaises(ValueError):
+                sda_file.insert('something_bad', record)
+
+            self.assertEqual(sda_file.labels(), [])
+
     def test_character(self):
         values = (obj for (obj, typ) in TEST_SCALARS if typ == 'character')
 
@@ -347,7 +358,7 @@ class TestSDAFileInsert(unittest.TestCase):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
 
-            for i, objs in enumerate(TEST_CELLS):
+            for i, objs in enumerate(TEST_CELL):
                 label = 'test' + str(i)
                 deflate = i % 10
                 sda_file.insert(label, objs, label, deflate)
@@ -363,6 +374,24 @@ class TestSDAFileInsert(unittest.TestCase):
                     RecordType='cell',
                     Empty='no',
                     RecordSize=record_size,
+                )
+
+    def test_structure(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            for i, obj in enumerate(TEST_STRUCTURE):
+                label = 'test' + str(i)
+                deflate = i % 10
+                sda_file.insert(label, obj, label, deflate)
+                self.assertCompositeRecord(
+                    sda_file,
+                    label,
+                    obj,
+                    Deflate=deflate,
+                    RecordType='structure',
+                    Empty='no',
+                    FieldNames=' '.join(sorted(obj.keys())),
                 )
 
     def test_unsupported(self):
@@ -436,7 +465,7 @@ class TestSDAFileInsert(unittest.TestCase):
                 data, _ = coerce_primitive(sub_record_type, data, extra)
                 data_set = group[label]
                 self.assertDataSet(data_set, data)
-            else:
+            elif sub_record_type == 'cell':
                 if isinstance(obj, np.ndarray):
                     record_size = np.atleast_2d(obj).shape
                 else:
@@ -447,6 +476,15 @@ class TestSDAFileInsert(unittest.TestCase):
                     obj,
                     RecordType=sub_record_type,
                     RecordSize=record_size,
+                )
+            elif sub_record_type == 'structure':
+                sub_group = group[label]
+                field_names = ' '.join(sorted(obj.keys()))
+                self.assertCompositeGroup(
+                    sub_group,
+                    obj,
+                    RecordType=sub_record_type,
+                    FieldNames=field_names,
                 )
 
 
@@ -554,13 +592,24 @@ class TestSDAFileExtract(unittest.TestCase):
     def test_cell(self):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
-            for i, data in enumerate(TEST_CELLS):
+            for i, data in enumerate(TEST_CELL):
                 label = 'test' + str(i)
                 sda_file.insert(label, data)
                 extracted = sda_file.extract(label)
                 data = np.asarray(data, dtype=object)
                 extracted = np.asarray(data, dtype=object)
                 assert_equal(extracted, data)
+
+    def test_structure(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            for i, data in enumerate(TEST_STRUCTURE):
+                label = 'test' + str(i)
+                sda_file.insert(label, data)
+                extracted = sda_file.extract(label)
+                self.assertEqual(sorted(data.keys()), sorted(extracted.keys()))
+                for key in data:
+                    assert_equal(extracted[key], data[key])
 
 
 class TestSDAFileDescribe(unittest.TestCase):

@@ -101,7 +101,9 @@ TEST_SPARSE_COMPLEX.extend([
 
 
 # lists, tuples
-TEST_CELLS = [
+TEST_CELL = [
+    ['hi', 'hello'],
+    np.array(['hi', 'hello']),
     ['hello', np.arange(4)],
     ['hello', [True, np.arange(4)]],
     ['hello', (True, np.arange(4))],
@@ -123,12 +125,30 @@ TEST_CELLS = [
     )
 ]
 
+TEST_STRUCTURE = [
+    {
+        'foo': 'foo',
+        'bar': np.arange(4),
+        'baz': np.array([True, False])
+    },
+    {
+        'foo': 'foo',
+        'bar': [np.arange(4), np.array([True, False])]
+    },
+    {
+        'strings': ['hi', 'hello'],
+        'structure': {
+            'foo': 'foo',
+            'bar': np.arange(4),
+            'baz': np.array([True, False])
+        }
+    },
+]
+
 
 # Unsupported
 TEST_UNSUPPORTED = [
-    np.array(['hi', 'hello']),  # no arrays of strings
     lambda x: x**2,
-    {0: 0},
     {0},
     None,
 ]
