@@ -578,7 +578,7 @@ def infer_record_type(obj):
     if check(obj, (int, np.long, float, np.number)):
         return 'numeric', cast_obj, None
 
-    if check(obj, (np.object_, np.unicode)):
+    if check(obj, (np.object_, np.unicode_, np.str_)):
         return 'cell', cast_obj, None
 
     return None, None, None
