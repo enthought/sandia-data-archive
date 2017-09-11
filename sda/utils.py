@@ -504,7 +504,7 @@ def infer_record_type(obj):
     numpy arrays :
         If the dtype is a supported numeric type, then the 'numeric' record
         type is inferred. Arrays of 'bool' type are inferred to be 'logical'.
-        Arrays of 'object' type are inferred to be 'cell' arrays.
+        Arrays of 'object' and string type are inferred to be 'cell' arrays.
 
     sparse arrays (from scipy.sparse) :
         These are inferred to be 'numeric' and 'sparse', if the dtype is a type
@@ -526,6 +526,15 @@ def infer_record_type(obj):
     Anything not listed above is not supported.
 
     """
+
+    # Unwrap scalar arrays to simplify the following
+    is_scalar = np.isscalar(obj)
+    is_array = isinstance(obj, np.ndarray)
+    while is_scalar and is_array:
+        obj = obj.value()
+        is_scalar = np.isscalar(obj)
+        is_array = isinstance(obj, np.ndarray)
+
     if isinstance(obj, (str, np.unicode)):  # Numpy string type is a str
         return 'character', obj, None
 
@@ -549,14 +558,13 @@ def infer_record_type(obj):
         return 'structure', obj, None
 
     # numeric and logical scalars and arrays
-    if np.isscalar(obj):
+    cast_obj = obj
+    if is_scalar:
         check = isinstance
-        cast_obj = obj
         if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
-    elif isinstance(obj, np.ndarray):
+    elif is_array:
         check = issubclass
-        cast_obj = np.asarray(obj)
         if cast_obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
         obj = cast_obj.dtype.type
@@ -569,7 +577,7 @@ def infer_record_type(obj):
     if check(obj, (int, np.long, float, np.number)):
         return 'numeric', cast_obj, None
 
-    if check(obj, np.object_):
+    if check(obj, (np.object_, np.unicode)):
         return 'cell', cast_obj, None
 
     return None, None, None
