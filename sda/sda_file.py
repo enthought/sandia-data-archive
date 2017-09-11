@@ -1,10 +1,9 @@
 """ Implementation of ``SDAFile`` for working with SDA files.
 
 The SDA format was designed to be universal to facilitate data sharing across
-multiple languages. It does contain constructs that are specific to MATLAB.
-These constructs, the *function* and *object* data types, cannot be written to
-or read from the ``SDAFile`` interface. However, entries of this type do appear
-when interrogating the contents of an SDA file.
+multiple languages. It supports reading and updating all record types, except
+*function* records. It support writing *numeric*, *logical*, *cell*, and
+*structure* records.
 
 """
 
@@ -16,16 +15,12 @@ import h5py
 import numpy as np
 
 from .utils import (
-    coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    coerce_sparse, coerce_sparse_complex, error_if_bad_header,
-    error_if_not_writable, extract_character, extract_complex, extract_logical,
-    extract_numeric, extract_sparse, extract_sparse_complex, get_decoded,
-    get_empty_for_type, infer_record_type, is_valid_writable, set_encoded,
-    update_header, write_header,
+    coerce_primitive, error_if_bad_header, error_if_not_writable,
+    extract_primitive, get_decoded, get_empty_for_type, infer_record_type,
+    is_primitive, is_supported, is_valid_writable, set_encoded, update_header,
+    write_header,
 )
 
-
-SUPPORTED_RECORD_TYPES = ('character', 'logical', 'numeric')
 
 WRITE_MODES = ('w', 'w-', 'x', 'a')
 
@@ -168,47 +163,9 @@ class SDAFile(object):
         """
         self._validate_labels(label, must_exist=True)
         with self._h5file('r') as h5file:
-            g = h5file[label]
-            group_attrs = get_decoded(g.attrs, 'RecordType', 'Empty')
-            record_type = group_attrs['RecordType']
-            if record_type not in SUPPORTED_RECORD_TYPES:
-                msg = "RecordType '{}' is not supported".format(record_type)
-                raise ValueError(msg)
-            # short circuit empty archives to avoid unnecessarily loading data.
-            if group_attrs['Empty'] == 'yes':
-                return get_empty_for_type(record_type)
-            ds = g[label]
-            data_attrs = get_decoded(
-                ds.attrs, 'Complex', 'ArraySize', 'Sparse'
-            )
-            complex_flag = data_attrs.get('Complex', 'no')
-            sparse_flag = data_attrs.get('Sparse', 'no')
-            shape = data_attrs.get('ArraySize', None)
-            data = ds[()]
-
-        if record_type == 'numeric':
-            if sparse_flag == 'yes':
-                if complex_flag == 'yes':
-                    extracted = extract_sparse_complex(data, shape.astype(int))
-                else:
-                    extracted = extract_sparse(data)
-            elif complex_flag == 'yes':
-                extracted = extract_complex(data, shape.astype(int))
-            else:
-                extracted = extract_numeric(data)
-            # squeeze leading dimension if this is a MATLAB row array
-            if extracted.ndim == 2 and extracted.shape[0] == 1:
-                # if it's a scalar, go all the way
-                if extracted.shape[1] == 1:
-                    extracted = extracted[0, 0]
-                else:
-                    extracted = np.squeeze(extracted, axis=0)
-        elif record_type == 'logical':
-            extracted = extract_logical(data)
-        elif record_type == 'character':
-            extracted = extract_character(data)
-
-        return extracted
+            grp = h5file[label]
+            attrs = get_decoded(grp.attrs)
+            return self._extract_data_from_group(grp, label, attrs)
 
     def insert(self, label, data, description='', deflate=0):
         """ Insert data into an SDA file.
@@ -235,13 +192,38 @@ class SDAFile(object):
 
         Notes
         -----
-        This relies on numpy to cast inhomogeneous array-like data to a
-        homogeneous type.  It is the responsibility of the caller to homogenize
-        the input data if the numpy casting machinery is not sufficient for the
-        input data.
+        This stores specific data types as described here.
 
-        Sparse matrices are converted to COO form for storing. This may be
-        inefficient for some sparse matrices.
+        sequences :
+            Lists, tuples, and thing else that identifies as a
+            collections.Sequence are stored as 'cell' records, no
+            matter the contents.
+
+        numpy arrays :
+            If the dtype is a supported numeric type, then a numpy array is
+            stored as a 'numeric' record. Arrays of 'bool' type are stored as
+            'logical' records. Object arrays are stored as 'cell' records.
+
+        sparse arrays (from scipy.sparse) :
+            These are stored as 'numeric' records if the dtype is a type
+            supported for numpy arrays.
+
+        strings :
+            Strings are stored as 'character' records. An attempt will be
+            made to convert the input to ascii encoded bytes, no matter the
+            underlying encoding. This may result in an encoding exception if
+            the input cannot be ascii encoded.
+
+        non-string scalars :
+            Non-string scalars are stored as 'numeric' if numeric, or 'logical'
+            if boolean.
+
+        other :
+            Arrays of characters are not supported. Convert to a string.
+            Object arrays are not supported. Cast to another dtype or turn into
+            a list.
+
+        Anything not listed above is not supported.
 
         """
         self._validate_can_write()
@@ -254,31 +236,24 @@ class SDAFile(object):
             msg = "{!r} is not a supported type".format(data)
             raise ValueError(data)
 
-        original_shape = None
-        if record_type == 'numeric':
-            if extra == 'complex':
-                original_shape = np.atleast_2d(cast_obj).shape
-                cast_obj = coerce_complex(cast_obj)
-            elif extra == 'sparse':
-                cast_obj = coerce_sparse(cast_obj)
-            elif extra == 'sparse+complex':
-                original_shape = cast_obj.shape
-                cast_obj = coerce_sparse_complex(cast_obj)
-            else:
-                cast_obj = coerce_numeric(cast_obj)
-        elif record_type == 'logical':
-            cast_obj = coerce_logical(cast_obj)
-        elif record_type == 'character':
-            cast_obj = coerce_character(cast_obj)
-        else:
-            # Should not happen
-            msg = "Unrecognized record type '{}'".format(record_type)
-            raise RuntimeError(msg)
+        with self._h5file('a') as h5file:
+            grp = h5file.create_group(label)
+            # Write the known header information
+            set_encoded(
+                grp.attrs,
+                RecordType=record_type,
+                Deflate=deflate,
+                Description=description,
+            )
 
-        self._insert_data(
-            label, cast_obj, description, deflate, record_type, extra,
-            original_shape
-        )
+            if is_primitive(record_type):
+                self._insert_primitive_data(
+                    grp, label, deflate, record_type, cast_obj, extra
+                )
+            else:
+                self._insert_composite_data(
+                    grp, deflate, record_type, cast_obj, extra
+                )
 
     def labels(self):
         """ Get data labels from the archive. """
@@ -360,15 +335,100 @@ class SDAFile(object):
         self.insert(label, data, attrs['Description'], attrs['Deflate'])
 
     # Private
-    def _insert_data(self, label, data, description, deflate, record_type,
-                     extra, original_shape):
-        """ Insert coerced data of a given type into the h5 file.
 
-        """
+    @contextmanager
+    def _h5file(self, mode):
+        h5file = h5py.File(self._filename, mode, **self._kw)
+        try:
+            yield h5file
+        finally:
+            h5file.close()
+
+    def _extract_data_from_group(self, grp, label, attrs):
+        """ Extract data from h5 group. ``label`` is the group label. """
+
+        record_type = attrs['RecordType']
+        if not is_supported(record_type):
+            msg = "RecordType '{}' is not supported".format(record_type)
+            raise ValueError(msg)
+
+        empty = attrs['Empty']
+        if empty == 'yes':
+            return get_empty_for_type(record_type)
+
+        if is_primitive(record_type):
+            ds = grp[label]
+            data_attrs = get_decoded(ds.attrs)
+            return extract_primitive(record_type, ds[()], data_attrs)
+
+        if record_type == 'cell':
+            record_size = attrs['RecordSize'].astype(int)
+            nr = np.prod(record_size)
+            labels = ['element {}'.format(i) for i in range(1, nr + 1)]
+            data = self._extract_composite_data(grp, labels)
+            if record_size[0] > 1 or len(record_size) > 2:
+                data = np.array(
+                    data, dtype=object,
+                ).reshape(record_size, order='F')
+            return data
+
+    def _extract_composite_data(self, grp, labels):
+        """ Extract composite data from a Group object with given labels. """
+        extracted = []
+        for label in labels:
+            sub_obj = grp[label]
+            attrs = get_decoded(sub_obj.attrs)
+            record_type = attrs['RecordType']
+            if is_primitive(record_type):
+                element = extract_primitive(record_type, sub_obj[()], attrs)
+            else:  # composite type
+                element = self._extract_data_from_group(sub_obj, label, attrs)
+            extracted.append(element)
+        return extracted
+
+    def _insert_composite_data(self, grp, deflate, record_type, data, extra):
+
+        if isinstance(data, np.ndarray):
+            record_size = np.atleast_2d(data).shape
+            data = data.ravel(order='F')
+        else:
+            record_size = (1, len(data))
+
+        num_elements = np.prod(record_size)
+
+        set_encoded(
+            grp.attrs,
+            Empty='yes' if num_elements == 0 else 'no',
+            RecordSize=record_size,
+        )
+
+        if record_type == 'cell':
+            for i, sub_data in enumerate(data, start=1):
+                label = 'element {}'.format(i)
+                sub_rec_type, sub_data, sub_extra = infer_record_type(sub_data)
+                if is_primitive(sub_rec_type):
+                    self._insert_primitive_data(
+                        grp, label, deflate, sub_rec_type, sub_data,
+                        sub_extra
+                    )
+                else:
+                    sub_grp = grp.create_group(label)
+                    set_encoded(
+                        sub_grp.attrs,
+                        RecordType=sub_rec_type
+                    )
+                    self._insert_composite_data(
+                        sub_grp, deflate, sub_rec_type, sub_data, sub_extra
+                    )
+
+    def _insert_primitive_data(self, grp, label, deflate, record_type, data,
+                               extra):
+        """ Prepare primitive data for storage and store it. """
+        data, original_shape = coerce_primitive(record_type, data, extra)
         empty = 'no'
         if np.isscalar(data) or data.shape == ():
-            maxshape = None
             compression = None
+            maxshape = None
             if np.isnan(data):
                 empty = 'yes'
         else:
@@ -378,16 +438,12 @@ class SDAFile(object):
                 empty = 'yes'
 
         with self._h5file('a') as h5file:
-            g = h5file.create_group(label)
             set_encoded(
-                g.attrs,
-                RecordType=record_type,
-                Deflate=deflate,
-                Description=description,
+                grp.attrs,
                 Empty=empty,
             )
 
-            ds = g.create_dataset(
+            ds = grp.create_dataset(
                 label,
                 maxshape=maxshape,
                 data=data,
@@ -406,14 +462,6 @@ class SDAFile(object):
                 data_attrs['ArraySize'] = original_shape
             set_encoded(ds.attrs, **data_attrs)
             update_header(h5file.attrs)
-
-    @contextmanager
-    def _h5file(self, mode):
-        h5file = h5py.File(self._filename, mode, **self._kw)
-        try:
-            yield h5file
-        finally:
-            h5file.close()
 
     def _get_attr(self, attr):
         """ Get a named atribute as a string """
@@ -437,9 +485,9 @@ class SDAFile(object):
         with self._h5file('r') as h5file:
             for label in labels:
                 label_exists = label in h5file
-            if not can_exist and label_exists:
-                msg = "Label '{}' already exists.".format(label)
-                raise ValueError(msg)
-            if must_exist and not label_exists:
-                msg = "Label item '{}' does not exist".format(label)
-                raise ValueError(msg)
+                if not can_exist and label_exists:
+                    msg = "Label '{}' already exists.".format(label)
+                    raise ValueError(msg)
+                if must_exist and not label_exists:
+                    msg = "Label item '{}' does not exist".format(label)
+                    raise ValueError(msg)

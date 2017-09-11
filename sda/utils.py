@@ -1,5 +1,12 @@
-""" Utility functions and data. """
+""" Utility functions and data.
 
+The functions in the module work directly on data and metadata. In order to
+make this easy to write and test, functionality that requires direct
+interaction with HDF5 are not included here.
+
+"""
+
+import collections
 from datetime import datetime
 import re
 import time
@@ -16,6 +23,11 @@ from .exceptions import BadSDAFile
 DATE_FORMAT = "%d-%b-%Y %H:%M:%S"
 DATE_FORMAT_SHORT = "%d-%b-%Y"
 
+# Record groups
+PRIMITIVE_RECORD_TYPES = ('character', 'logical', 'numeric')
+SUPPORTED_RECORD_TYPES = ('character', 'logical', 'numeric', 'cell')
+
+
 # Regular expression for version string
 VERSION_1_RE = re.compile(r'1\.(?P<sub>\d+)')
 
@@ -28,36 +40,142 @@ UNSUPPORTED_NUMERIC_TYPE_CODES = {
 }
 
 
+def coerce_primitive(record_type, data, extra):
+    """ Coerce a primitive type based on its record type.
+
+    Parameters
+    ----------
+    record_type : str or None
+        The record type.
+    data :
+        The object if scalar, the object cast as a numpy array if not, or None
+        the type is unsupported.
+    extra :
+        Extra information about the type returned by ``infer_record_type``.
+
+    Returns
+    -------
+    coerced :
+        The data coerced to storage form.
+    original_shape : tuple or None
+        The original shape of the data. This is only returned for complex and
+        sparse-complex data.
+
+    """
+    original_shape = None
+    if record_type == 'numeric':
+        if extra == 'complex':
+            original_shape = np.atleast_2d(data).shape
+            data = coerce_complex(data)
+        elif extra == 'sparse':
+            data = coerce_sparse(data)
+        elif extra == 'sparse+complex':
+            original_shape = data.shape
+            data = coerce_sparse_complex(data)
+        else:
+            data = coerce_numeric(data)
+    elif record_type == 'logical':
+        data = coerce_logical(data)
+    elif record_type == 'character':
+        data = coerce_character(data)
+    else:
+        # Should not happen
+        msg = "Unrecognized record type '{}'".format(record_type)
+        raise ValueError(msg)
+    return data, original_shape
+
+
 def coerce_character(data):
-    """ Coerce 'character' data to uint8 stored form. """
+    """ Coerce 'character' data to uint8 stored form
+
+    Parameters
+    ----------
+    data : str
+        Input string
+
+    Returns
+    -------
+    coerced : ndarray
+        The string, encoded as ascii, and stored in a uint8 array
+
+    """
     data = np.frombuffer(data.encode('ascii'), np.uint8)
     return data
 
 
 def coerce_complex(data):
-    """ Coerce complex 'numeric' data """
+    """ Coerce complex 'numeric' data
+
+    Parameters
+    ----------
+    data : array-like or complex
+        Input complex value
+
+    Returns
+    -------
+    coerced : ndarray
+        2xN array containing the real and imaginary values of the input as rows
+        0 and 1. This will have type float32 if the input type is complex64
+        and type float64 if the input type is complex128 (or equivalent).
+
+    """
     data = np.asarray(data).ravel(order='F')
     return np.array([data.real, data.imag])
 
 
 def coerce_logical(data):
-    """ Coerce 'logical' data to uint8 stored form. """
+    """ Coerce 'logical' data to uint8 stored form
+
+    Parameters
+    ----------
+    data : array-like or bool
+        Input boolean value
+
+    Returns
+    -------
+    coerced : ndarray of uint8 or uint8
+        Scalar or array containing the input data coereced to uint8, clipped to
+        0 or 1.
+
+    """
     if np.isscalar(data) or data.shape == ():
-        data = 1 if data else 0
+        data = np.uint8(1 if data else 0)
     else:
         data = data.astype(np.uint8).clip(0, 1)
     return data
 
 
 def coerce_numeric(data):
-    """ Coerce 'numeric' data to stored form. """
+    """ Coerce complex 'numeric' data
+
+    Parameters
+    ----------
+    data : array-like or scalar
+        Integer or floating-point values
+
+    Returns
+    -------
+    data : array-like or scalar
+        This function does not modify the input data.
+
+    """
     return data
 
 
 def coerce_sparse(data):
     """ Coerce sparse 'numeric' data to stored form.
 
-    Input is expected to coo_matrix.
+    Parameters
+    ----------
+    data : scipy.sparse.coo_matrix
+        Input sparse matrix.
+
+    Returns
+    -------
+    coerced : ndarray
+        3xN array containing the rows, columns, and values of the sparse matrix
+        in COO form. Note that the row and column arrays are 1-based to be
+        compatible with MATLAB.
 
     """
     # 3 x N, [row, column, value], 1-based
@@ -65,9 +183,20 @@ def coerce_sparse(data):
 
 
 def coerce_sparse_complex(data):
-    """ Coerse sparse and complex 'numeric data to stored form.
+    """ Coerce sparse and complex 'numeric' data to stored form.
 
-    Input is expected to coo_matrix.
+    Parameters
+    ----------
+    data : scipy.sparse.coo_matrix
+        Input sparse matrix.
+
+    Returns
+    -------
+    coerced : ndarray
+        3xN array containing the index, real, and imaginary values of the
+        sparse complex data. The index is unraveled and 1-based. The original
+        array shape is required to re-ravel the index and reconstitute the
+        sparse, complex data.
 
     """
     indices = np.ravel_multi_index((data.row, data.col), data.shape)
@@ -121,28 +250,106 @@ def error_if_not_writable(h5file):
         raise IOError(msg)
 
 
+def extract_primitive(record_type, data, data_attrs):
+    """ Extract primitive data from its raw storage format.
+
+    Parameters
+    -----------
+    data : ndarray
+        Data extracted from hdf5 dataset storage
+    record_type : str
+        The primitive data type
+    data_attrs : dict
+        Attributes associated with the stored dataset
+
+    Returns
+    -------
+    extracted :
+        The extracted primitive data
+
+    """
+    complex_flag = data_attrs.get('Complex', 'no')
+    sparse_flag = data_attrs.get('Sparse', 'no')
+    shape = data_attrs.get('ArraySize', None)
+
+    if record_type == 'numeric':
+        if sparse_flag == 'yes':
+            if complex_flag == 'yes':
+                extracted = extract_sparse_complex(data, shape.astype(int))
+            else:
+                extracted = extract_sparse(data)
+        elif complex_flag == 'yes':
+            extracted = extract_complex(data, shape.astype(int))
+        else:
+            extracted = extract_numeric(data)
+        # squeeze leading dimension if this is a MATLAB row array
+        if extracted.ndim == 2 and extracted.shape[0] == 1:
+            # if it's a scalar, go all the way
+            if extracted.shape[1] == 1:
+                extracted = extracted[0, 0]
+            else:
+                extracted = np.squeeze(extracted, axis=0)
+    elif record_type == 'logical':
+        extracted = extract_logical(data)
+    elif record_type == 'character':
+        extracted = extract_character(data)
+
+    return extracted
+
+
 def extract_character(data):
-    """ Extract 'character' data from uint8 stored form. """
+    """ Extract 'character' data from uint8 stored form.
+
+    Parameters
+    -----------
+    data : ndarray
+        Array of uint8 ascii encodings
+
+    Returns
+    -------
+    extracted : str
+        Reconstructed ascii string.
+
+    """
     data = data.tobytes().decode('ascii')
     return data
 
 
 def extract_complex(data, shape):
-    """ Extract complex 'numeric' data from stored form. """
-    dtype = data.dtype
-    if dtype == np.float64:
-        c_dtype = np.complex128
-    elif dtype == np.float32:
-        c_dtype = np.complex64
-    extracted = np.empty(shape, dtype=c_dtype, order='F')
-    flat = extracted.ravel(order='F')
-    flat.real = data[0]
-    flat.imag = data[1]
-    return extracted
+    """ Extract complex 'numeric' data.
+
+    Parameters
+    -----------
+    data : ndarray
+        2 x N array containing real and imaginary portions of the complex data.
+    shape : tuple
+        Shape of the extracted array.
+
+    Returns
+    -------
+    extracted : ndarray
+        The extracted complex array.
+
+    """
+    extracted = 1j * data[1]
+    extracted.real = data[0]
+    return extracted.reshape(shape, order='F')
 
 
 def extract_logical(data):
-    """ Extract 'logical' data from uint8 stored form. """
+    """ Extract 'logical' data from uint8 stored form.
+
+    Parameters
+    -----------
+    data : ndarray or scalar
+        Array or scalar of uint8 values clipped to 0 or 1
+
+    Returns
+    -------
+    extracted :
+        The extracted boolean or boolean array
+
+    """
     if np.isscalar(data):
         data = bool(data)
     else:
@@ -151,12 +358,38 @@ def extract_logical(data):
 
 
 def extract_numeric(data):
-    """ Extract 'numeric' data from stored form. """
+    """ Extract 'numeric' data from stored form.
+
+    Parameters
+    -----------
+    data : ndarray or scalar
+        Array or scalar of numeric data
+
+    Returns
+    -------
+    data : ndarray or scalar
+        The input data
+
+    """
     return data
 
 
 def extract_sparse(data):
-    """ Extract sparse 'numeric' data from stored form. """
+    """ Extract sparse 'numeric' data from stored form.
+
+    Parameters
+    -----------
+    data : 3xN ndarray
+        3xN array containing the rows, columns, and values of a sparse matrix
+        in COO form. Note that the row and column arrays must be 1-based to be
+        compatible with MATLAB.
+
+    Returns
+    -------
+    extracted : scipy.sparse.coo_matrix
+        The extracted sparse matrix
+
+    """
     row, col, data = data
     # Fix 1-based indexing
     row -= 1
@@ -165,9 +398,24 @@ def extract_sparse(data):
 
 
 def extract_sparse_complex(data, shape):
-    """ Extract sparse 'numeric' data from stored form. """
+    """ Extract sparse 'numeric' data from stored form.
+
+    Parameters
+    -----------
+    data : ndarray
+        3xN array containing the index, real, and imaginary values of a
+        sparse complex data. The index is unraveled and 1-based.
+    shape : tuple
+        Shape of the extracted array
+
+    Returns
+    -------
+    extracted : coo_matrix
+        The extracted sparse, complex matrix
+
+    """
     index = data[0].astype(np.int64)
-    # Fix 1-based indexing from MATLAB
+    # Fix 1-based indexing
     index -= 1
     data = extract_complex(data[1:], (data.shape[1],))
     row, col = np.unravel_index(index, shape)
@@ -200,6 +448,8 @@ def get_empty_for_type(record_type):
         return ''
     elif record_type == 'logical':
         return np.array([], dtype=bool)
+    elif record_type == 'cell':
+        return []
     else:
         msg = "Record type '{}' cannot be empty".format(record_type)
         raise ValueError(msg)
@@ -208,7 +458,7 @@ def get_empty_for_type(record_type):
 def infer_record_type(obj):
     """ Infer record type of ``obj``.
 
-    Supported types are 'numeric', 'bool', and 'character'.
+    Supported types are 'numeric', 'bool', 'character', and 'cell'.
 
     Parameters
     ----------
@@ -227,7 +477,48 @@ def infer_record_type(obj):
         'complex', or 'sparse+complex' for 'numeric' types, and will be None in
         all other cases.
 
+    Notes
+    -----
+    The inference routines are unambiguous, and require the user to understand
+    the input data in reference to these rules. The user has flexibility to
+    coerce data before attempting to store it to have it be stored as a desired
+    type.
+
+    sequences :
+        Lists, tuples, and thing else that identifies as a collections.Sequence
+        are always inferred to be 'cell' records, no matter the contents.
+
+    numpy arrays :
+        If the dtype is a supported numeric type, then the 'numeric' record
+        type is inferred. Arrays of 'bool' type are inferred to be 'logical'.
+        Arrays of 'object' type are inferred to be 'cell' arrays.
+
+    sparse arrays (from scipy.sparse) :
+        These are inferred to be 'numeric' and 'sparse', if the dtype is a type
+        supported for numpy arrays.
+
+    strings :
+        These are always inferred to be 'character' type. An attempt will be
+        made to convert the input to ascii encoded bytes, no matter the
+        underlying encoding. This may result in an encoding exception if the
+        input cannot be ascii encoded.
+
+    non-string scalars :
+        Non-string scalars are inferred to be 'numeric' if numeric, or
+        'logical' if boolean.
+
+    other :
+        Arrays of characters are not supported. Convert to a string.
+
+    Anything not listed above is not supported.
+
     """
+    if isinstance(obj, (str, np.unicode)):  # Numpy string type is a str
+        return 'character', obj, None
+
+    if isinstance(obj, collections.Sequence):
+        return 'cell', obj, None
+
     if issparse(obj):
         if obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
@@ -244,17 +535,16 @@ def infer_record_type(obj):
     if np.isscalar(obj):
         check = isinstance
         cast_obj = obj
-
         if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
-
-    else:
+    elif isinstance(obj, np.ndarray):
         check = issubclass
         cast_obj = np.asarray(obj)
         if cast_obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return None, None, None
-
         obj = cast_obj.dtype.type
+    else:
+        return None, None, None
 
     if check(obj, (bool, np.bool_)):
         return 'logical', cast_obj, None
@@ -262,11 +552,20 @@ def infer_record_type(obj):
     if check(obj, (int, np.long, float, np.number)):
         return 'numeric', cast_obj, None
 
-    # Only accept strings, not arrays of strings
-    if isinstance(obj, (str, np.unicode)):  # Numpy strings are also str
-        return 'character', cast_obj, None
+    if check(obj, np.object_):
+        return 'cell', cast_obj, None
 
     return None, None, None
+
+
+def is_primitive(record_type):
+    """ Check if record type is primitive. """
+    return record_type in PRIMITIVE_RECORD_TYPES
+
+
+def is_supported(record_type):
+    """ Check if record type is supported. """
+    return record_type in SUPPORTED_RECORD_TYPES
 
 
 def is_valid_date(date_str):

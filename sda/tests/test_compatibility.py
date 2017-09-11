@@ -2,9 +2,19 @@ import unittest
 
 import numpy as np
 from numpy.testing import assert_array_equal
+from scipy import sparse
 
 from sda.sda_file import SDAFile
 from sda.testing import data_path
+
+
+EXAMPLE_A1 = np.zeros(5, dtype=np.float64)
+
+EXAMPLE_A2 = np.empty((4, 3), dtype=np.complex128)
+EXAMPLE_A2.real = 0
+EXAMPLE_A2.imag = 1
+
+EXAMPLE_A3 = sparse.eye(5).tocoo()
 
 
 class TestSDAReference(unittest.TestCase):
@@ -31,22 +41,19 @@ class TestSDAReference(unittest.TestCase):
     def test_example_A1(self):
         """ 5x1 zeros """
         label = 'example A1'
-        expected = np.zeros(5, dtype=np.float64)
-        self.assertArray(label, expected)
+        self.assertArray(label, EXAMPLE_A1)
 
     def test_example_A2(self):
         """ 4x3 imaginary numbers """
         label = 'example A2'
-        expected = np.empty((4, 3), dtype=np.complex128)
-        expected.real = 0
-        expected.imag = 1
-        self.assertArray(label, expected)
+        self.assertArray(label, EXAMPLE_A2)
 
     def test_example_A3(self):
         """ 5x5 sparse matrix """
         label = 'example A3'
         extracted = self.sda_file.extract(label)
-        assert_array_equal(extracted.toarray(), np.eye(5))
+        self.assertIsInstance(extracted, sparse.coo_matrix)
+        assert_array_equal(extracted.toarray(), EXAMPLE_A3.toarray())
 
     def test_example_A4(self):
         """ Empty array """
@@ -73,7 +80,10 @@ class TestSDAReference(unittest.TestCase):
     def test_example_E(self):
         """ Cell array combining examples A1 and A2 """
         label = "example E"
-        self.assertUnsupported(label)
+        extracted = self.sda_file.extract(label)
+        self.assertEqual(len(extracted), 2)
+        assert_array_equal(extracted[0], EXAMPLE_A1)
+        assert_array_equal(extracted[1], EXAMPLE_A2)
 
     def test_example_F(self):
         """ Structure combining examples A1 and A2 """
