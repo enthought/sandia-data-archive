@@ -135,6 +135,14 @@ TEST_STRUCTURE = [
         'foo': 'foo',
         'bar': [np.arange(4), np.array([True, False])]
     },
+    {
+        'strings': ['hi', 'hello'],
+        'structure': {
+            'foo': 'foo',
+            'bar': np.arange(4),
+            'baz': np.array([True, False])
+        }
+    },
 ]
 
 

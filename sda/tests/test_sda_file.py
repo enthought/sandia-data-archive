@@ -455,7 +455,7 @@ class TestSDAFileInsert(unittest.TestCase):
                 data, _ = coerce_primitive(sub_record_type, data, extra)
                 data_set = group[label]
                 self.assertDataSet(data_set, data)
-            else:
+            elif sub_record_type == 'cell':
                 if isinstance(obj, np.ndarray):
                     record_size = np.atleast_2d(obj).shape
                 else:
@@ -466,6 +466,15 @@ class TestSDAFileInsert(unittest.TestCase):
                     obj,
                     RecordType=sub_record_type,
                     RecordSize=record_size,
+                )
+            elif sub_record_type == 'structure':
+                sub_group = group[label]
+                field_names = ' '.join(sorted(obj.keys()))
+                self.assertCompositeGroup(
+                    sub_group,
+                    obj,
+                    RecordType=sub_record_type,
+                    FieldNames=field_names,
                 )
 
 

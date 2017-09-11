@@ -398,7 +398,7 @@ class SDAFile(object):
 
         attrs = {}
 
-        if record_type in 'cell':
+        if record_type == 'cell':
             if isinstance(data, np.ndarray):
                 record_size = np.atleast_2d(data).shape
                 data = data.ravel(order='F')
