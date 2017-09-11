@@ -17,8 +17,8 @@ import numpy as np
 from .utils import (
     coerce_primitive, error_if_bad_header, error_if_not_writable,
     extract_primitive, get_decoded, get_empty_for_type, infer_record_type,
-    is_primitive, is_supported, is_valid_writable, set_encoded, update_header,
-    write_header,
+    is_primitive, is_supported, is_valid_matlab_field_label, is_valid_writable,
+    set_encoded, update_header, write_header,
 )
 
 
@@ -254,9 +254,15 @@ class SDAFile(object):
                     grp, label, deflate, record_type, cast_obj, extra
                 )
             else:
-                self._insert_composite_data(
-                    grp, deflate, record_type, cast_obj, extra
-                )
+                try:
+                    self._insert_composite_data(
+                        grp, deflate, record_type, cast_obj, extra
+                    )
+                except ValueError:
+                    # If something goes wrong, don't leave the archive in an
+                    # inconsistent state
+                    del h5file[label]
+                    raise
 
     def labels(self):
         """ Get data labels from the archive. """
@@ -395,9 +401,7 @@ class SDAFile(object):
         return extracted
 
     def _insert_composite_data(self, grp, deflate, record_type, data, extra):
-
         attrs = {}
-
         if record_type == 'cell':
             if isinstance(data, np.ndarray):
                 record_size = np.atleast_2d(data).shape
@@ -411,6 +415,11 @@ class SDAFile(object):
             nr = len(data)
             data = sorted((str(key), value) for key, value in data.items())
             labels, data = zip(*data)
+            # Check that each label is a valid MATLAB field label
+            for label in labels:
+                if not is_valid_matlab_field_label(label):
+                    msg = "Key '{}' is not a valid MATLAB field label"
+                    raise ValueError(msg.format(label))
             attrs['FieldNames'] = ' '.join(labels)
         else:
             raise ValueError(record_type)

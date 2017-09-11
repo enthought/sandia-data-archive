@@ -201,6 +201,16 @@ class TestSDAFileInsert(unittest.TestCase):
             sda_file.insert('test', [0, 1, 2])
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
+    def test_invalid_structure_key(self):
+        record = [0, 1, 2, {' bad': np.arange(4)}]
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            with self.assertRaises(ValueError):
+                sda_file.insert('something_bad', record)
+
+            self.assertEqual(sda_file.labels(), [])
+
     def test_character(self):
         values = (obj for (obj, typ) in TEST_SCALARS if typ == 'character')
 

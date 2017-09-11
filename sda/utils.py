@@ -9,6 +9,7 @@ interaction with HDF5 are not included here.
 import collections
 from datetime import datetime
 import re
+import string
 import time
 
 import numpy as np
@@ -616,6 +617,14 @@ def is_valid_format_version(value):
     if m is None:
         return False
     return 0 <= int(m.group('sub')) <= 1
+
+
+def is_valid_matlab_field_label(label):
+    """ Check that passed string is a valid MATLAB field label """
+    if not label.startswith(tuple(string.ascii_letters)):
+        return False
+    VALID_CHARS = set(string.ascii_letters + string.digits + "_")
+    return set(label).issubset(VALID_CHARS)
 
 
 def is_valid_writable(value):

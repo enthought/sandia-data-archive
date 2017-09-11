@@ -18,8 +18,8 @@ from sda.utils import (
     extract_complex, extract_logical, extract_numeric, extract_sparse,
     extract_sparse_complex, get_date_str, get_decoded, get_empty_for_type,
     infer_record_type, is_valid_date, is_valid_file_format,
-    is_valid_format_version, is_valid_writable, set_encoded, update_header,
-    write_header
+    is_valid_format_version, is_valid_matlab_field_label, is_valid_writable,
+    set_encoded, update_header, write_header
 )
 
 
@@ -36,7 +36,6 @@ class TestUtils(unittest.TestCase):
             coerce_primitive('foo', 0, None)
 
     def test_coerce_complex(self):
-
         data = np.arange(6, dtype=np.complex128)
         data.imag = -1
 
@@ -266,6 +265,18 @@ class TestUtils(unittest.TestCase):
         self.assertFalse(is_valid_format_version('1.2'))
         self.assertFalse(is_valid_format_version('0.2'))
         self.assertFalse(is_valid_format_version('2.0'))
+
+    def test_is_valid_matlab_field_label(self):
+        self.assertTrue(is_valid_matlab_field_label('a0n1'))
+        self.assertTrue(is_valid_matlab_field_label('a0n1999999'))
+        self.assertTrue(is_valid_matlab_field_label('a0_n1'))
+        self.assertTrue(is_valid_matlab_field_label('a0_N1'))
+        self.assertTrue(is_valid_matlab_field_label('A0_N1'))
+        self.assertFalse(is_valid_matlab_field_label('1n0a'))
+        self.assertFalse(is_valid_matlab_field_label('A0 N1'))
+        self.assertFalse(is_valid_matlab_field_label('_A0N1'))
+        self.assertFalse(is_valid_matlab_field_label(' a0n1'))
+        self.assertFalse(is_valid_matlab_field_label(' A0N1'))
 
     def test_is_valid_writable(self):
         self.assertTrue(is_valid_writable('yes'))
