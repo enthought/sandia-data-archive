@@ -1,7 +1,9 @@
 """ Implementation of ``SDAFile`` for working with SDA files.
 
 The SDA format was designed to be universal to facilitate data sharing across
-multiple languages. It does support storing or extracing *function* records.
+multiple languages. It supports reading and updating all record types, except
+*function* records. It support writing *numeric*, *logical*, *cell*, and
+*structure* records.
 
 """
 
