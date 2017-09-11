@@ -644,7 +644,7 @@ def get_decoded(dict_like, *attrs):
 
 
 def update_header(attrs):
-    """ Update a header to verion 1.1. """
+    """ Update timestamp and version to 1.1 in a header. """
     set_encoded(
         attrs,
         FormatVersion='1.1',
