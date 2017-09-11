@@ -8,8 +8,11 @@ multiple languages. It supports reading and updating all record types, except
 """
 
 from contextlib import contextmanager
+import os
 import os.path as op
 import re
+import shutil
+import tempfile
 
 import h5py
 import numpy as np
@@ -282,10 +285,46 @@ class SDAFile(object):
 
         self._validate_labels(labels, must_exist=True)
 
-        with self._h5file('a') as h5file:
-            for label in labels:
-                del h5file[label]
-            update_header(h5file.attrs)
+        # Create a new file so space is actually freed
+        labels = set(labels)
+
+        def _visitor(path):
+            """ Visitor that copies data from source to destination """
+
+            # Skip paths corresponding to exluded labels
+            if path.split('/')[0] in labels:
+                return
+
+            # Copy everything else
+            source_obj = source[path]
+            destination.attrs.update(source.attrs)
+            if isinstance(source_obj, h5py.Group):
+                destination.create_group(path)
+            else:
+                ds = source_obj
+                destination.create_dataset(
+                    path,
+                    data=source_obj[()],
+                    chunks=ds.chunks,
+                    maxshape=ds.maxshape,
+                    compression=ds.compression,
+                    compression_opts=ds.compression_opts,
+                    scaleoffset=ds.scaleoffset,
+                    shuffle=ds.shuffle,
+                    fletcher32=ds.fletcher32,
+                    fillvalue=ds.fillvalue,
+                )
+
+        pid, destination_path = tempfile.mkstemp()
+        os.close(pid)
+        destination = h5py.File(destination_path, 'w')
+        with self._h5file('r') as source:
+            destination.attrs.update(source.attrs)
+            update_header(destination.attrs)
+            source.visit(_visitor)
+
+        destination.close()
+        shutil.move(destination_path, self._filename)
 
     def probe(self, pattern=None):
         """ Summarize the state of the archive
