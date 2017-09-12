@@ -19,11 +19,26 @@ from sda.utils import (
     extract_sparse_complex, get_date_str, get_decoded, get_empty_for_type,
     infer_record_type, is_valid_date, is_valid_file_format,
     is_valid_format_version, is_valid_matlab_field_label, is_valid_writable,
-    set_encoded, update_header, write_header
+    set_encoded, unnest, update_header, write_header
 )
 
 
 class TestUtils(unittest.TestCase):
+
+    def test_unnest(self):
+        data = dict(a=1, b=2, c=3)
+        answer = unnest(data)
+        expected = data.copy()
+        self.assertEqual(answer, expected)
+
+        data = dict(a=1, b=2, c=dict(d=4, e=5, f=dict(g=6)))
+        answer = unnest(data)
+        expected = data.copy()
+        expected['c/d'] = data['c']['d']
+        expected['c/e'] = data['c']['e']
+        expected['c/f'] = data['c']['f']
+        expected['c/f/g'] = data['c']['f']['g']
+        self.assertEqual(answer, expected)
 
     def test_coerce_character(self):
         coerced = coerce_character(string.printable)
