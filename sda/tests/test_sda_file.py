@@ -1,5 +1,6 @@
 import os
 import random
+import shutil
 import string
 import unittest
 
@@ -11,8 +12,8 @@ from sda.exceptions import BadSDAFile
 from sda.sda_file import SDAFile
 from sda.testing import (
     BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELL, TEST_SCALARS, TEST_SPARSE,
-    TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, temporary_file,
-    temporary_h5file
+    TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, data_path,
+    temporary_file, temporary_h5file
 )
 from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
@@ -780,3 +781,90 @@ class TestSDAFileMisc(unittest.TestCase):
                 self.assertEqual(attrs['Deflate'], 1)
 
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
+
+    def test_replace_object_with_record(self):
+
+        reference_path = data_path('SDAreference.sda')
+        with temporary_file() as file_path:
+            # Copy the reference, which as an object in it.
+            shutil.copy(reference_path, file_path)
+            sda_file = SDAFile(file_path, 'a')
+            label = 'example I'
+
+            # Replace some stuff
+            data = sda_file.extract(label)
+            data['Parameter'] = 'hello world'
+            sda_file.replace(label, data)
+
+            extracted = sda_file.extract(label)
+
+            with sda_file._h5file('r') as h5file:
+                attrs = get_decoded(h5file['example I'].attrs)
+
+        # Validate equality
+        self.assertEqual(attrs['RecordType'], 'object')
+        self.assertEqual(attrs['Class'], 'ExampleObject')
+        self.assertIsInstance(extracted, dict)
+        self.assertEqual(len(extracted), 1)
+        self.assertEqual(extracted['Parameter'], 'hello world')
+
+    def test_replace_nested_object_with_nested_record(self):
+
+        reference_path = data_path('SDAreference.sda')
+        with temporary_file() as file_path:
+            # Copy the reference, which as an object in it.
+            shutil.copy(reference_path, file_path)
+            sda_file = SDAFile(file_path, 'a')
+            label = 'example J'
+
+            # Replace some stuff
+            data = sda_file.extract(label)
+            data[0, 0]['Parameter'] = np.zeros(5)
+            data[1, 0]['Parameter'] = np.ones(5)
+            sda_file.replace(label, data)
+
+            extracted = sda_file.extract(label)
+            with sda_file._h5file('r') as h5file:
+                attrs1 = get_decoded(h5file['example J/element 1'].attrs)
+                attrs2 = get_decoded(h5file['example J/element 2'].attrs)
+
+        # Validate equality
+        self.assertEqual(attrs1['RecordType'], 'object')
+        self.assertEqual(attrs1['Class'], 'ExampleObject')
+        self.assertEqual(attrs2['RecordType'], 'object')
+        self.assertEqual(attrs2['Class'], 'ExampleObject')
+        self.assertIsInstance(extracted, np.ndarray)
+        self.assertTrue(np.issubdtype(extracted.dtype, np.object_))
+        self.assertTrue(extracted.shape, (2, 1))
+        el1 = extracted[0, 0]
+        self.assertIsInstance(el1, dict)
+        self.assertEqual(len(el1), 1)
+        assert_array_equal(el1['Parameter'], np.zeros(5))
+        el2 = extracted[1, 0]
+        self.assertIsInstance(el2, dict)
+        self.assertEqual(len(el2), 1)
+        assert_array_equal(el2['Parameter'], np.ones(5))
+
+    def test_replace_object_with_non_record(self):
+
+        reference_path = data_path('SDAreference.sda')
+        with temporary_file() as file_path:
+            # Copy the reference, which as an object in it.
+            shutil.copy(reference_path, file_path)
+            sda_file = SDAFile(file_path, 'a')
+            label = 'example I'
+
+            # Replace some stuff
+            sda_file.replace(label, ['hello', {'a': 10}])
+
+            extracted = sda_file.extract(label)
+
+            # Make sure the resulting structure record is not an object
+            with sda_file._h5file('r') as h5file:
+                attrs = get_decoded(h5file['example I/element 2'].attrs)
+
+        self.assertEqual(attrs['RecordType'], 'structure')
+        self.assertNotIn('Class', attrs)
+        self.assertEqual(len(extracted), 2)
+        self.assertEqual(extracted[0], 'hello')
+        self.assertEqual(extracted[1], {'a': 10})
