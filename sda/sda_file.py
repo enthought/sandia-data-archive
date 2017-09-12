@@ -288,7 +288,7 @@ class SDAFile(object):
         # Create a new file so space is actually freed
         labels = set(labels)
 
-        def _visitor(path):
+        def _copy_visitor(path):
             """ Visitor that copies data from source to destination """
 
             # Skip paths corresponding to exluded labels
@@ -320,9 +320,8 @@ class SDAFile(object):
         destination = h5py.File(destination_path, 'w')
         with self._h5file('r') as source:
             destination.attrs.update(source.attrs)
-            update_header(destination.attrs)
-            source.visit(_visitor)
-
+            source.visit(_copy_visitor)
+        update_header(destination.attrs)
         destination.close()
         shutil.move(destination_path, self._filename)
 
