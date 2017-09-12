@@ -31,7 +31,7 @@ WRITE_MODES = ('w', 'w-', 'x', 'a')
 class SDAFile(object):
     """ Read, write, inspect, and manipulate Sandia Data Archive files.
 
-    This supports version 1.1 of the Sandai Data Archive format.
+    This supports version 1.1 of the Sandia Data Archive format.
 
     """
 
@@ -291,7 +291,7 @@ class SDAFile(object):
         def _copy_visitor(path):
             """ Visitor that copies data from source to destination """
 
-            # Skip paths corresponding to exluded labels
+            # Skip paths corresponding to excluded labels
             if path.split('/')[0] in labels:
                 return
 
