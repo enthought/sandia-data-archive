@@ -8,6 +8,7 @@ multiple languages. It supports reading and updating all record types, except
 """
 
 from contextlib import contextmanager
+from functools import partial
 import os
 import os.path as op
 import re
@@ -110,7 +111,7 @@ class SDAFile(object):
             raise ValueError("File is not writable.")
         if not is_valid_writable(value):
             raise ValueError("Must be 'yes' or 'no'")
-        with self._h5file('a') as h5file:
+        with self._h5file('r+') as h5file:
             set_encoded(h5file.attrs, Writable=value)
 
     @property
@@ -140,7 +141,7 @@ class SDAFile(object):
         """
         self._validate_can_write()
         self._validate_labels(label, must_exist=True)
-        with self._h5file('a') as h5file:
+        with self._h5file('r+') as h5file:
             set_encoded(h5file[label].attrs, Description=description)
             update_header(h5file.attrs)
 
@@ -242,7 +243,7 @@ class SDAFile(object):
             msg = "{!r} is not a supported type".format(data)
             raise ValueError(data)
 
-        with self._h5file('a') as h5file:
+        with self._h5file('r+') as h5file:
             grp = h5file.create_group(label)
             # Write the known header information
             set_encoded(
@@ -286,9 +287,7 @@ class SDAFile(object):
         self._validate_labels(labels, must_exist=True)
 
         # Create a new file so space is actually freed
-        labels = set(labels)
-
-        def _copy_visitor(path):
+        def _copy_visitor(path, source, destination, labels):
             """ Visitor that copies data from source to destination """
 
             # Skip paths corresponding to excluded labels
@@ -317,12 +316,18 @@ class SDAFile(object):
 
         pid, destination_path = tempfile.mkstemp()
         os.close(pid)
-        destination = h5py.File(destination_path, 'w')
-        with self._h5file('r') as source:
-            destination.attrs.update(source.attrs)
-            source.visit(_copy_visitor)
-        update_header(destination.attrs)
-        destination.close()
+        with h5py.File(destination_path, 'w') as destination:
+            with self._h5file('r') as source:
+                destination.attrs.update(source.attrs)
+                source.visit(
+                    partial(
+                        _copy_visitor,
+                        source=source,
+                        destination=destination,
+                        labels=set(labels)
+                    )
+                )
+            update_header(destination.attrs)
         shutil.move(destination_path, self._filename)
 
     def probe(self, pattern=None):
@@ -370,16 +375,75 @@ class SDAFile(object):
     def replace(self, label, data):
         """ Replace an existing dataset.
 
-        This is equivalent to removing the data and inserting a new entry using
-        the same label, description, and deflate option.
+        Parameters
+        ----------
+        label : str
+            The label of the data to replace.
+        data :
+            The data that is to replace an existing record.
+
+        Notes
+        -----
+        The primary purpose of this method is to replace data with data of the
+        same or compatible record type. In particular, a 'object' record can
+        be updated using this method by passing a dictionary suitable for a
+        'structure' record. All other metadata for the record will be
+        preserved.
+
+        If you simply want to reuse a label for data of a different type, use
+        'remove' and 'insert' in succession.
 
         """
         self._validate_can_write()
         self._validate_labels(label, must_exist=True)
-        with self._h5file('r') as h5file:
+
+        # Locate and record affected 'object' records .
+        def _object_visitor(path, h5file, object_records, label):
+            attrs = get_decoded(h5file[path].attrs)
+            if path.split('/')[0] == label:
+                record_type = attrs['RecordType']
+                if record_type == 'object':
+                    object_records[path] = attrs['Class']
+
+        object_records = {}
+        with self._h5file('r+') as h5file:
             attrs = get_decoded(h5file[label].attrs, 'Deflate', 'Description')
-        self.remove(label)
-        self.insert(label, data, attrs['Description'], attrs['Deflate'])
+            h5file.visit(
+                partial(
+                    _object_visitor,
+                    h5file=h5file,
+                    object_records=object_records,
+                    label=label,
+                )
+            )
+            ## Trash the data
+            del h5file[label]
+
+        self.insert(label, data, attrs['Description'], int(attrs['Deflate']))
+
+        # Patch newly created 'structure' record as 'object' records if that is
+        # what was originally contained in the file.
+        # Visitor patching 'structure' as 'object' and filling in the 'Class'
+        # attribute where applicable.
+        def _patch_visitor(path, h5file, object_records):
+            if path in object_records:
+                new_attrs = get_decoded(h5file[path].attrs)
+                if new_attrs['RecordType'] == 'structure':
+                    set_encoded(
+                        h5file[path].attrs,
+                        RecordType='object',
+                        Class=object_records[path],
+                    )
+
+        if len(object_records) > 0:
+            with self._h5file('r+') as h5file:
+                h5file.visit(
+                    partial(
+                        _patch_visitor,
+                        h5file=h5file,
+                        object_records=object_records,
+                    )
+                )
 
     # Private
 
@@ -498,7 +562,7 @@ class SDAFile(object):
             if np.squeeze(data).shape == (0,):
                 empty = 'yes'
 
-        with self._h5file('a') as h5file:
+        with self._h5file('r+') as h5file:
             set_encoded(
                 grp.attrs,
                 Empty=empty,
