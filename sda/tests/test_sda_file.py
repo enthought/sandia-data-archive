@@ -671,13 +671,18 @@ class TestSDAFileMisc(unittest.TestCase):
             sda_file.insert('l1', [1])
             self.assertEqual(sorted(sda_file.labels()), ['l0', 'l1'])
 
-    def test_delete(self):
+    def test_remove(self):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
 
             labels = []
 
-            for i, (obj, _) in enumerate(TEST_SCALARS + TEST_ARRAYS):
+            ALL = (
+                [obj for obj, _ in TEST_ARRAYS + TEST_SCALARS] + TEST_CELL +
+                TEST_SPARSE + TEST_SPARSE_COMPLEX + TEST_STRUCTURE
+            )
+
+            for i, obj in enumerate(ALL):
                 label = 'test' + str(i)
                 labels.append(label)
                 sda_file.insert(label, obj)
