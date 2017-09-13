@@ -367,6 +367,7 @@ class TestSDAFileInsert(unittest.TestCase):
                     record_size = np.atleast_2d(objs).shape
                 else:
                     record_size = (1, len(objs))
+
                 self.assertCompositeRecord(
                     sda_file,
                     label,

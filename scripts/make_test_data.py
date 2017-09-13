@@ -1,117 +1,64 @@
 import argparse
 
-import h5py
+import numpy as np
+from scipy import sparse
 
-from sdafile.utils import write_header
+from sdafile import SDAFile
 
 
-def make_test_data(filename):
+EXAMPLE_A1 = np.zeros(5, dtype=np.float64)
 
-    with h5py.File(filename, 'w') as f:
+EXAMPLE_A2 = np.empty((4, 3), dtype=np.complex128)
+EXAMPLE_A2.real = 0
+EXAMPLE_A2.imag = 1
 
-        # Header
-        write_header(f.attrs)
+EXAMPLE_A3 = sparse.eye(5).tocoo()
 
-        # curly
-        g = f.create_group('curly')
-        g.attrs['RecordType'] = 'numeric'
-        g.attrs['Empty'] = 'no'
-        g.attrs['Deflate'] = 0
-        g.attrs['Description'] = '3x4 array (double)'
+EXAMPLE_A4 = np.nan
 
-        ds = g.create_dataset(
-            'curly',
-            shape=(3, 4),
-            maxshape=(None, None),
-            dtype='<f8',
-            chunks=(3, 4),
-            compression=0,  # gzip
-            fillvalue=0.0,
-        )
-        ds.attrs['RecordType'] = 'numeric'
-        ds.attrs['Empty'] = 'no'
 
-        # curly 2
-        g = f.create_group('curly 2')
-        g.attrs['RecordType'] = 'numeric'
-        g.attrs['Empty'] = 'no'
-        g.attrs['Deflate'] = 0
-        g.attrs['Description'] = 'Single version of curly'
+def make_example_data(filename):
 
-        ds = g.create_dataset(
-            'curly 2',
-            shape=(3, 4),
-            maxshape=(None, None),
-            dtype='<f4',
-            chunks=(3, 4),
-            compression=0,
-            fillvalue=0.0,
-        )
-        ds.attrs['RecordType'] = 'numeric'
-        ds.attrs['Empty'] = 'no'
+    sda_file = SDAFile(filename, 'w')
 
-        # larry
-        g = f.create_group('larry')
-        g.attrs['RecordType'] = 'character'
-        g.attrs['Empty'] = 'yes'
-        g.attrs['Deflate'] = 0
-        g.attrs['Description'] = 'An empty character array'
+    sda_file.insert("example A1", EXAMPLE_A1, "5x1 zeros")
 
-        ds = g.create_dataset(
-            'larry',
-            shape=(1, 1),
-            maxshape=(None, None),
-            dtype='<u1',
-            chunks=(1, 1),
-            compression=0,
-            fillvalue=0,
-        )
-        ds.attrs['RecordType'] = 'character'
-        ds.attrs['Empty'] = 'yes'
+    sda_file.insert("example A2", EXAMPLE_A2, "4x3 imaginary numbers")
 
-        # moe
-        g = f.create_group('moe')
-        g.attrs['RecordType'] = 'logical'
-        g.attrs['Empty'] = 'no'
-        g.attrs['Deflate'] = 0
-        g.attrs['Description'] = 'A 1x1 logical array'
+    sda_file.insert("example A3", EXAMPLE_A3, "5x5 sparse matrix")
 
-        ds = g.create_dataset(
-            'moe',
-            shape=(1, 1),
-            maxshape=(None, None),
-            dtype='<u1',
-            chunks=(1, 1),
-            compression=0,
-            fillvalue=0,
-        )
-        ds.attrs['RecordType'] = 'logical'
-        ds.attrs['Empty'] = 'no'
+    sda_file.insert("example A4", np.nan, "Empty array")
 
-        # my function
-        g = f.create_group('my function')
-        g.attrs['RecordType'] = 'function'
-        g.attrs['Empty'] = 'no'
-        g.attrs['Deflate'] = 0
-        g.attrs['Description'] = 'Sine function'
+    sda_file.insert("example B", True, "Logical scalar")
 
-        ds = g.create_dataset(
-            'my function',
-            shape=(1, 10280),
-            maxshape=(1, 10280),
-            dtype='<u1',
-            chunks=None,
-            fillvalue=0,
-        )
-        ds.attrs['RecordType'] = 'function'
-        ds.attrs['Command'] = 'sin'
-        ds.attrs['Empty'] = 'no'
+    sda_file.insert("example C", "Here is some text", "Some text")
+
+    desc = "Cell array combining examples A1 and A2"
+    sda_file.insert("example E", [EXAMPLE_A1, EXAMPLE_A2], desc)
+
+    desc = "Structure combining examples A1 and A2"
+    a1a2 = {"A1": EXAMPLE_A1, "A2": EXAMPLE_A2}
+    sda_file.insert("example F", a1a2, desc)
+
+    desc = "Structure array combining examples A1 and A2 (repeated)"
+    cell = np.array([a1a2, a1a2], dtype=object).reshape(2, 1)
+    sda_file.insert("example G", cell, desc)
+
+    desc = "Cell array of structures combining examples A1-A4"
+    a3a4 = {"A3": EXAMPLE_A3, "A4": EXAMPLE_A4}
+    cell = np.array([a1a2, a3a4], dtype=object).reshape(2, 1)
+    sda_file.insert("example H", cell, desc)
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('filename', help="The name of the file to create")
+    parser.add_argument(
+        "filename",
+        help="The name of the file to create",
+        nargs="?",
+        default="SDAreference_py.sda",
+    )
 
     args = parser.parse_args()
-    make_test_data(args.filename)
+    make_example_data(args.filename)
