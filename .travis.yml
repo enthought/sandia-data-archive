@@ -21,7 +21,7 @@ before_script:
   - cp .coveragerc testrunner/
   - cd testrunner
 script:
-  - coverage run -m nose.core sda --exe
+  - coverage run -m nose.core sdafile --exe
 notifications:
   email:
     - travis-ci@enthought.com

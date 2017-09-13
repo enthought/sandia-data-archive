@@ -7,10 +7,10 @@ import h5py
 import numpy as np
 from scipy.sparse import coo_matrix
 
-import sda
+import sdafile
 
 
-DATA_DIR = op.join(op.abspath(op.dirname(sda.__file__)), 'tests', 'data')
+DATA_DIR = op.join(op.abspath(op.dirname(sdafile.__file__)), 'tests', 'data')
 
 
 def data_path(fname):

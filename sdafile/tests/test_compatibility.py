@@ -4,8 +4,8 @@ import numpy as np
 from numpy.testing import assert_array_equal
 from scipy import sparse
 
-from sda.sda_file import SDAFile
-from sda.testing import data_path
+from sdafile.sda_file import SDAFile
+from sdafile.testing import data_path
 
 
 EXAMPLE_A1 = np.zeros(5, dtype=np.float64)
