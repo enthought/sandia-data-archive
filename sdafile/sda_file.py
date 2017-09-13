@@ -397,8 +397,8 @@ class SDAFile(object):
         self.remove(label)
         self.insert(label, data, attrs['Description'], attrs['Deflate'])
 
-    def replace_object(self, label, data):
-        """ Replace an existing object record.
+    def update_object(self, label, data):
+        """ Update an existing object record.
 
         Parameters
         ----------
@@ -409,9 +409,9 @@ class SDAFile(object):
 
         Notes
         -----
-        This is more strict than **replace** in that the intention is to
-        replace an 'object' record while preserving the record type. The
-        simplest way to make use of this is to *extract* an object record,
+        This is more strict than **replace** in that the intention is to update
+        the contents of an 'object' record while preserving the record type.
+        The simplest way to make use of this is to *extract* an object record,
         replace some data, and then call this to update the stored record.
 
         """
