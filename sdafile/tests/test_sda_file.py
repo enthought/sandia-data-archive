@@ -768,7 +768,7 @@ class TestSDAFileMisc(unittest.TestCase):
             assert_array_equal(state['Deflate'], [0, 1])
 
 
-class TestSDAFileReplace(unittest.TestCase):
+class TestSDAFileReplaceUpdate(unittest.TestCase):
 
     def test_replace(self):
 
@@ -807,9 +807,9 @@ class TestSDAFileReplace(unittest.TestCase):
             label = 'example A'
             data = sda_file.extract('example I')
             with self.assertRaises(ValueError):
-                sda_file.replace_object(label, data)
+                sda_file.update_object(label, data)
 
-    def test_replace_object_with_equivalent_record(self):
+    def test_update_object_with_equivalent_record(self):
 
         reference_path = data_path('SDAreference.sda')
         with temporary_file() as file_path:
@@ -824,7 +824,7 @@ class TestSDAFileReplace(unittest.TestCase):
             # Replace some stuff with the same type
             data = sda_file.extract(label)
             data['Parameter'] = np.arange(5)
-            sda_file.replace_object(label, data)
+            sda_file.update_object(label, data)
 
             extracted = sda_file.extract(label)
 
@@ -840,7 +840,7 @@ class TestSDAFileReplace(unittest.TestCase):
         self.assertEqual(len(extracted), 1)
         assert_equal(extracted['Parameter'], data['Parameter'])
 
-    def test_replace_object_with_inequivalent_record(self):
+    def test_update_object_with_inequivalent_record(self):
 
         reference_path = data_path('SDAreference.sda')
         with temporary_file() as file_path:
@@ -853,9 +853,9 @@ class TestSDAFileReplace(unittest.TestCase):
             data = sda_file.extract(label)
             data['Parameter'] = 'hello world'
             with self.assertRaises(ValueError):
-                sda_file.replace_object(label, data)
+                sda_file.update_object(label, data)
 
-    def test_replace_object_with_non_record(self):
+    def test_update_object_with_non_record(self):
 
         reference_path = data_path('SDAreference.sda')
         with temporary_file() as file_path:
@@ -866,4 +866,4 @@ class TestSDAFileReplace(unittest.TestCase):
 
             # Replace some stuff with a non-dictionary
             with self.assertRaises(ValueError):
-                sda_file.replace_object(label, 'hello')
+                sda_file.update_object(label, 'hello')
