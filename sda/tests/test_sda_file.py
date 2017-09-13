@@ -804,6 +804,9 @@ class TestSDAFileReplace(unittest.TestCase):
             # Copy the reference, which as an object in it.
             shutil.copy(reference_path, file_path)
             sda_file = SDAFile(file_path, 'a')
+            with sda_file._h5file('a') as h5file:
+                set_encoded(h5file.attrs, Updated='Unmodified')
+
             label = 'example I'
 
             # Replace some stuff with the same type
@@ -815,6 +818,8 @@ class TestSDAFileReplace(unittest.TestCase):
 
             with sda_file._h5file('r') as h5file:
                 attrs = get_decoded(h5file['example I'].attrs)
+
+            self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
         # Validate equality
         self.assertEqual(attrs['RecordType'], 'object')

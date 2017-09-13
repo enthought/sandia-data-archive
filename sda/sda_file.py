@@ -287,9 +287,7 @@ class SDAFile(object):
         self._validate_labels(labels, must_exist=True)
 
         # Create a new file so space is actually freed
-        labels = set(labels)
-
-        def _copy_visitor(path):
+        def _copy_visitor(path, source, destination, labels):
             """ Visitor that copies data from source to destination """
 
             # Skip paths corresponding to excluded labels
@@ -321,7 +319,15 @@ class SDAFile(object):
         with h5py.File(destination_path, 'w') as destination:
             with self._h5file('r') as source:
                 destination.attrs.update(source.attrs)
-                source.visit(_copy_visitor)
+                source.visit(
+                    partial(
+                        _copy_visitor,
+                        source=source,
+                        destination=destination,
+                        labels=set(labels),
+
+                    )
+                )
             update_header(destination.attrs)
         shutil.move(destination_path, self._filename)
 
@@ -418,6 +424,7 @@ class SDAFile(object):
         # Visitor checking for compatibility between the object record and
         # passed data.
         def _compatible_visitor(path, grp, data):
+            """ Visitor testing compatibility between record and data. """
             parts = path.split('/')
             for part in parts:
                 data = data[part]
