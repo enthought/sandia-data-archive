@@ -16,6 +16,7 @@ setup(
     author="Christopher L. Farrow",
     author_email="cfarrow@enthought.com",
     maintainer="Sandia National Laboratories",
+    url="https://github.com/enthought/sandia-data-archive",
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",
         "Intended Audience :: Developers",
