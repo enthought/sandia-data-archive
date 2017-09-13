@@ -705,9 +705,20 @@ class TestSDAFileMisc(unittest.TestCase):
             sda_file.remove(*removed)
             self.assertEqual(sorted(sda_file.labels()), sorted(kept))
 
+            # Make sure metadata is preserved and data can be extracted
+            with sda_file._h5file('r') as h5file:
+                for label in kept:
+                    attrs = h5file[label].attrs
+                    self.assertIn('Deflate', attrs)
+                    self.assertIn('Description', attrs)
+                    self.assertIn('RecordType', attrs)
+                    self.assertIn('Empty', attrs)
+                    sda_file.extract(label)
+
             sda_file.remove(*kept)
             self.assertEqual(sda_file.labels(), [])
 
+            self.assertEqual(sda_file.FormatVersion, '1.1')
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
     def test_probe(self):
