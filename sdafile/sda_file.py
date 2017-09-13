@@ -296,12 +296,11 @@ class SDAFile(object):
 
             # Copy everything else
             source_obj = source[path]
-            destination.attrs.update(source.attrs)
             if isinstance(source_obj, h5py.Group):
-                destination.create_group(path)
+                dest_obj = destination.create_group(path)
             else:
                 ds = source_obj
-                destination.create_dataset(
+                dest_obj = destination.create_dataset(
                     path,
                     data=source_obj[()],
                     chunks=ds.chunks,
@@ -313,6 +312,8 @@ class SDAFile(object):
                     fletcher32=ds.fletcher32,
                     fillvalue=ds.fillvalue,
                 )
+
+            dest_obj.attrs.update(source_obj.attrs)
 
         pid, destination_path = tempfile.mkstemp()
         os.close(pid)
