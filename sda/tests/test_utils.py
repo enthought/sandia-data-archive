@@ -1,4 +1,5 @@
 import datetime
+from itertools import combinations
 import string
 import unittest
 
@@ -12,18 +13,38 @@ from sda.testing import (
     TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, temporary_h5file
 )
 from sda.utils import (
-    coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    coerce_primitive, coerce_sparse, coerce_sparse_complex, error_if_bad_attr,
-    error_if_bad_header, error_if_not_writable, extract_character,
-    extract_complex, extract_logical, extract_numeric, extract_sparse,
-    extract_sparse_complex, get_date_str, get_decoded, get_empty_for_type,
-    infer_record_type, is_valid_date, is_valid_file_format,
-    is_valid_format_version, is_valid_matlab_field_label, is_valid_writable,
-    set_encoded, unnest, update_header, write_header
+    CELL_EQUIVALENT, STRUCTURE_EQUIVALENT, SUPPORTED_RECORD_TYPES,
+    are_record_types_equivalent, coerce_character, coerce_complex,
+    coerce_logical, coerce_numeric, coerce_primitive, coerce_sparse,
+    coerce_sparse_complex, error_if_bad_attr, error_if_bad_header,
+    error_if_not_writable, extract_character, extract_complex, extract_logical,
+    extract_numeric, extract_sparse, extract_sparse_complex, get_date_str,
+    get_decoded, get_empty_for_type, infer_record_type, is_valid_date,
+    is_valid_file_format, is_valid_format_version, is_valid_matlab_field_label,
+    is_valid_writable, set_encoded, unnest, update_header, write_header
 )
 
 
 class TestUtils(unittest.TestCase):
+
+    def test_are_record_types_equivalent(self):
+
+        for rt in SUPPORTED_RECORD_TYPES:
+            self.assertTrue(are_record_types_equivalent(rt, rt))
+
+        equivalents = []
+        for rt1, rt2 in combinations(SUPPORTED_RECORD_TYPES, 2):
+            if are_record_types_equivalent(rt1, rt2):
+                equivalents.append(sorted((rt1, rt2)))
+
+        expected = []
+        for rt1, rt2 in combinations(STRUCTURE_EQUIVALENT, 2):
+            expected.append(sorted((rt1, rt2)))
+
+        for rt1, rt2 in combinations(CELL_EQUIVALENT, 2):
+            expected.append(sorted((rt1, rt2)))
+
+        self.assertEqual(sorted(equivalents), sorted(expected))
 
     def test_unnest(self):
         data = dict(a=1, b=2, c=3)
