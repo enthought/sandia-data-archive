@@ -53,6 +53,24 @@ EMPTY_FOR_TYPE = {
     'structure': {}
 }
 
+# Equivalent record types for reading
+STRUCTURE_EQUIVALENT = ('structure', 'object')
+CELL_EQUIVALENT = ('cell', 'objects', 'structures')
+
+
+def are_record_types_equivalent(rt1, rt2):
+    """ Determine if record types are equivalent with respect to reading """
+    if rt1 == rt2:
+        return True
+
+    if rt1 in STRUCTURE_EQUIVALENT and rt2 in STRUCTURE_EQUIVALENT:
+        return True
+
+    if rt1 in CELL_EQUIVALENT and rt2 in CELL_EQUIVALENT:
+        return True
+
+    return False
+
 
 def coerce_primitive(record_type, data, extra):
     """ Coerce a primitive type based on its record type.
@@ -658,6 +676,17 @@ def get_decoded(dict_like, *attrs):
         attr: value.decode('ascii') if isinstance(value, bytes) else value
         for attr, value in items
     }
+
+
+def unnest(data):
+    """ Provide paths for structure mappings. """
+    items = [('', data)]
+    for parent, obj in items:
+        if isinstance(obj, collections.Mapping):
+            for key in obj:
+                path = "/".join((parent, key)).lstrip("/")
+                items.append((path, obj[key]))
+    return dict(items[1:])
 
 
 def update_header(attrs):

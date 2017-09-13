@@ -8,6 +8,7 @@ multiple languages. It supports reading and updating all record types, except
 """
 
 from contextlib import contextmanager
+from functools import partial
 import os
 import os.path as op
 import re
@@ -18,10 +19,10 @@ import h5py
 import numpy as np
 
 from .utils import (
-    coerce_primitive, error_if_bad_header, error_if_not_writable,
-    extract_primitive, get_decoded, get_empty_for_type, infer_record_type,
-    is_primitive, is_supported, is_valid_matlab_field_label, is_valid_writable,
-    set_encoded, update_header, write_header,
+    are_record_types_equivalent, coerce_primitive, error_if_bad_header,
+    error_if_not_writable, extract_primitive, get_decoded, get_empty_for_type,
+    infer_record_type, is_primitive, is_supported, is_valid_matlab_field_label,
+    is_valid_writable, set_encoded, unnest, update_header, write_header,
 )
 
 
@@ -110,7 +111,7 @@ class SDAFile(object):
             raise ValueError("File is not writable.")
         if not is_valid_writable(value):
             raise ValueError("Must be 'yes' or 'no'")
-        with self._h5file('a') as h5file:
+        with self._h5file('r+') as h5file:
             set_encoded(h5file.attrs, Writable=value)
 
     @property
@@ -140,7 +141,7 @@ class SDAFile(object):
         """
         self._validate_can_write()
         self._validate_labels(label, must_exist=True)
-        with self._h5file('a') as h5file:
+        with self._h5file('r+') as h5file:
             set_encoded(h5file[label].attrs, Description=description)
             update_header(h5file.attrs)
 
@@ -242,7 +243,7 @@ class SDAFile(object):
             msg = "{!r} is not a supported type".format(data)
             raise ValueError(data)
 
-        with self._h5file('a') as h5file:
+        with self._h5file('r+') as h5file:
             grp = h5file.create_group(label)
             # Write the known header information
             set_encoded(
@@ -286,9 +287,7 @@ class SDAFile(object):
         self._validate_labels(labels, must_exist=True)
 
         # Create a new file so space is actually freed
-        labels = set(labels)
-
-        def _copy_visitor(path):
+        def _copy_visitor(path, source, destination, labels):
             """ Visitor that copies data from source to destination """
 
             # Skip paths corresponding to excluded labels
@@ -317,12 +316,19 @@ class SDAFile(object):
 
         pid, destination_path = tempfile.mkstemp()
         os.close(pid)
-        destination = h5py.File(destination_path, 'w')
-        with self._h5file('r') as source:
-            destination.attrs.update(source.attrs)
-            source.visit(_copy_visitor)
-        update_header(destination.attrs)
-        destination.close()
+        with h5py.File(destination_path, 'w') as destination:
+            with self._h5file('r') as source:
+                destination.attrs.update(source.attrs)
+                source.visit(
+                    partial(
+                        _copy_visitor,
+                        source=source,
+                        destination=destination,
+                        labels=set(labels),
+
+                    )
+                )
+            update_header(destination.attrs)
         shutil.move(destination_path, self._filename)
 
     def probe(self, pattern=None):
@@ -370,6 +376,15 @@ class SDAFile(object):
     def replace(self, label, data):
         """ Replace an existing dataset.
 
+        Parameters
+        ----------
+        label : str
+            The record label.
+        data :
+            The data with which to replacing the record.
+
+        Notes
+        -----
         This is equivalent to removing the data and inserting a new entry using
         the same label, description, and deflate option.
 
@@ -380,6 +395,85 @@ class SDAFile(object):
             attrs = get_decoded(h5file[label].attrs, 'Deflate', 'Description')
         self.remove(label)
         self.insert(label, data, attrs['Description'], attrs['Deflate'])
+
+    def replace_object(self, label, data):
+        """ Replace an existing object record.
+
+        Parameters
+        ----------
+        label : str
+            The record label.
+        data : dict
+            The data with which to replacing the object record.
+
+        Notes
+        -----
+        This is more strict than **replace** in that the intention is to
+        replace an 'object' record while preserving the record type. The
+        simplest way to make use of this is to *extract* an object record,
+        replace some data, and then call this to update the stored record.
+
+        """
+        self._validate_can_write()
+        self._validate_labels(label, must_exist=True)
+
+        record_type, _, _ = infer_record_type(data)
+        if record_type != 'structure':
+            raise ValueError("Input data is not a mapping")
+
+        # Visitor checking for compatibility between the object record and
+        # passed data.
+        def _compatible_visitor(path, grp, data):
+            """ Visitor testing compatibility between record and data. """
+            parts = path.split('/')
+            for part in parts:
+                data = data[part]
+
+            record_type, _, _ = infer_record_type(data)
+            attrs = get_decoded(grp[path].attrs)
+            equivalent = are_record_types_equivalent(
+                record_type,
+                attrs['RecordType']
+            )
+            if not equivalent:
+                return False
+
+        with self._h5file('r') as h5file:
+            # Check the general structure of the data and file
+            grp = h5file[label]
+            attrs = get_decoded(grp.attrs)
+            if not attrs['RecordType'] == 'object':
+                raise ValueError("Record '{}' is not an object".format(label))
+            file_keys = sorted(unnest(grp))
+            data_keys = sorted(unnest(data))
+            success = file_keys == data_keys
+            if success:
+                # Check for compatibility
+                success = h5file[label].visit(
+                    partial(
+                        _compatible_visitor,
+                        grp=grp,
+                        data=data,
+                    )
+                )
+
+        if success is False:   # Using 'is' because it could be None
+            msg = "Data is not compatible with record '{}'"
+            raise ValueError(msg.format(label))
+
+        self.remove(label)
+        self.insert(label, data, attrs['Description'], int(attrs['Deflate']))
+
+        # Fix the record type
+        with self._h5file('r+') as h5file:
+            # Check the general structure of the data and file
+            grp = h5file[label]
+            set_encoded(
+                grp.attrs,
+                RecordType='object',
+                Class=attrs['Class'],
+            )
+            update_header(grp.attrs)
 
     # Private
 
@@ -498,7 +592,7 @@ class SDAFile(object):
             if np.squeeze(data).shape == (0,):
                 empty = 'yes'
 
-        with self._h5file('a') as h5file:
+        with self._h5file('r+') as h5file:
             set_encoded(
                 grp.attrs,
                 Empty=empty,

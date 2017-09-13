@@ -1,5 +1,6 @@
 import os
 import random
+import shutil
 import string
 import unittest
 
@@ -11,8 +12,8 @@ from sda.exceptions import BadSDAFile
 from sda.sda_file import SDAFile
 from sda.testing import (
     BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELL, TEST_SCALARS, TEST_SPARSE,
-    TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, temporary_file,
-    temporary_h5file
+    TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, data_path,
+    temporary_file, temporary_h5file
 )
 from sda.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
@@ -754,6 +755,9 @@ class TestSDAFileMisc(unittest.TestCase):
             assert_array_equal(state['Description'], labels[4:])
             assert_array_equal(state['Deflate'], [0, 1])
 
+
+class TestSDAFileReplace(unittest.TestCase):
+
     def test_replace(self):
 
         with temporary_file() as file_path:
@@ -780,3 +784,74 @@ class TestSDAFileMisc(unittest.TestCase):
                 self.assertEqual(attrs['Deflate'], 1)
 
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
+
+    def test_replace_non_object(self):
+
+        reference_path = data_path('SDAreference.sda')
+        with temporary_file() as file_path:
+            # Copy the reference, which as an object in it.
+            shutil.copy(reference_path, file_path)
+            sda_file = SDAFile(file_path, 'a')
+            label = 'example A'
+            data = sda_file.extract('example I')
+            with self.assertRaises(ValueError):
+                sda_file.replace_object(label, data)
+
+    def test_replace_object_with_equivalent_record(self):
+
+        reference_path = data_path('SDAreference.sda')
+        with temporary_file() as file_path:
+            # Copy the reference, which as an object in it.
+            shutil.copy(reference_path, file_path)
+            sda_file = SDAFile(file_path, 'a')
+            with sda_file._h5file('a') as h5file:
+                set_encoded(h5file.attrs, Updated='Unmodified')
+
+            label = 'example I'
+
+            # Replace some stuff with the same type
+            data = sda_file.extract(label)
+            data['Parameter'] = np.arange(5)
+            sda_file.replace_object(label, data)
+
+            extracted = sda_file.extract(label)
+
+            with sda_file._h5file('r') as h5file:
+                attrs = get_decoded(h5file['example I'].attrs)
+
+            self.assertNotEqual(sda_file.Updated, 'Unmodified')
+
+        # Validate equality
+        self.assertEqual(attrs['RecordType'], 'object')
+        self.assertEqual(attrs['Class'], 'ExampleObject')
+        self.assertIsInstance(extracted, dict)
+        self.assertEqual(len(extracted), 1)
+        assert_equal(extracted['Parameter'], data['Parameter'])
+
+    def test_replace_object_with_inequivalent_record(self):
+
+        reference_path = data_path('SDAreference.sda')
+        with temporary_file() as file_path:
+            # Copy the reference, which as an object in it.
+            shutil.copy(reference_path, file_path)
+            sda_file = SDAFile(file_path, 'a')
+            label = 'example I'
+
+            # Replace some stuff with different type
+            data = sda_file.extract(label)
+            data['Parameter'] = 'hello world'
+            with self.assertRaises(ValueError):
+                sda_file.replace_object(label, data)
+
+    def test_replace_object_with_non_record(self):
+
+        reference_path = data_path('SDAreference.sda')
+        with temporary_file() as file_path:
+            # Copy the reference, which as an object in it.
+            shutil.copy(reference_path, file_path)
+            sda_file = SDAFile(file_path, 'a')
+            label = 'example I'
+
+            # Replace some stuff with a non-dictionary
+            with self.assertRaises(ValueError):
+                sda_file.replace_object(label, 'hello')
