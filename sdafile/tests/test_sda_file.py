@@ -8,14 +8,14 @@ import numpy as np
 from numpy.testing import assert_array_equal, assert_equal
 from scipy.sparse import coo_matrix
 
-from sda.exceptions import BadSDAFile
-from sda.sda_file import SDAFile
-from sda.testing import (
+from sdafile.exceptions import BadSDAFile
+from sdafile.sda_file import SDAFile
+from sdafile.testing import (
     BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELL, TEST_SCALARS, TEST_SPARSE,
     TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, data_path,
     temporary_file, temporary_h5file
 )
-from sda.utils import (
+from sdafile.utils import (
     coerce_character, coerce_complex, coerce_logical, coerce_numeric,
     coerce_primitive, coerce_sparse, coerce_sparse_complex, get_decoded,
     infer_record_type, is_primitive, set_encoded, write_header

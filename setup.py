@@ -3,17 +3,17 @@ import os
 from setuptools import setup, find_packages
 
 # Get version from version.py.
-version_filename = os.path.join("sda", "version.py")
+version_filename = os.path.join("sdafile", "version.py")
 with open(version_filename) as version_file:
     version_py_locals = {}
     exec(version_file.read(), version_py_locals)
     version = version_py_locals["version"]
 
 setup(
-    name="sda",
+    name="sdafile",
     version=version,
     packages=find_packages(),
-    author="Christopher Farrow",
+    author="Christopher L. Farrow",
     author_email="cfarrow@enthought.com",
     maintainer="Sandia National Laboratories",
     classifiers=[

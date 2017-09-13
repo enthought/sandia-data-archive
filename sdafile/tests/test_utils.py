@@ -7,12 +7,12 @@ import numpy as np
 from numpy.testing import assert_array_equal
 from scipy.sparse import coo_matrix
 
-from sda.exceptions import BadSDAFile
-from sda.testing import (
+from sdafile.exceptions import BadSDAFile
+from sdafile.testing import (
     BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELL, TEST_SCALARS, TEST_SPARSE,
     TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, temporary_h5file
 )
-from sda.utils import (
+from sdafile.utils import (
     CELL_EQUIVALENT, STRUCTURE_EQUIVALENT, SUPPORTED_RECORD_TYPES,
     are_record_types_equivalent, coerce_character, coerce_complex,
     coerce_logical, coerce_numeric, coerce_primitive, coerce_sparse,

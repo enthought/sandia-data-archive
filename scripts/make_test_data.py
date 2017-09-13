@@ -2,7 +2,7 @@ import argparse
 
 import h5py
 
-from sda.utils import write_header
+from sdafile.utils import write_header
 
 
 def make_test_data(filename):
