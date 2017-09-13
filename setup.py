@@ -9,6 +9,16 @@ with open(version_filename) as version_file:
     exec(version_file.read(), version_py_locals)
     version = version_py_locals["version"]
 
+
+install_requires = [
+    "h5py", 
+    "scipy", 
+    "pandas", 
+    "numpy", 
+    "packaging", 
+]
+
+
 setup(
     name="sdafile",
     version=version,
@@ -36,6 +46,7 @@ setup(
         'Tools for reading, writing, altering, and inspecting Sandia Data '
         'Archive (SDA) files.'
     ),
+    install_requires=install_requires,
     license='BSD',
     platforms=["Windows", "Linux", "Mac OS-X", "Unix", "Solaris"],
     zip_safe=True,
