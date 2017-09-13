@@ -132,7 +132,7 @@ def coerce_character(data):
 
     """
     data = np.frombuffer(data.encode('ascii'), np.uint8)
-    return data
+    return np.atleast_2d(data)
 
 
 def coerce_complex(data):
@@ -151,7 +151,7 @@ def coerce_complex(data):
         and type float64 if the input type is complex128 (or equivalent).
 
     """
-    data = np.asarray(data).ravel(order='F')
+    data = np.atleast_2d(data).ravel(order='F')
     return np.array([data.real, data.imag])
 
 
@@ -174,7 +174,7 @@ def coerce_logical(data):
         data = np.uint8(1 if data else 0)
     else:
         data = data.astype(np.uint8).clip(0, 1)
-    return data
+    return np.atleast_2d(data)
 
 
 def coerce_numeric(data):
@@ -187,11 +187,11 @@ def coerce_numeric(data):
 
     Returns
     -------
-    data : array-like or scalar
-        This function does not modify the input data.
+    coerced : array-like or scalar
+        The data with at least 2 dimensions
 
     """
-    return data
+    return np.atleast_2d(data)
 
 
 def coerce_sparse(data):
@@ -314,13 +314,6 @@ def extract_primitive(record_type, data, data_attrs):
             extracted = extract_complex(data, shape.astype(int))
         else:
             extracted = extract_numeric(data)
-        # squeeze leading dimension if this is a MATLAB row array
-        if extracted.ndim == 2 and extracted.shape[0] == 1:
-            # if it's a scalar, go all the way
-            if extracted.shape[1] == 1:
-                extracted = extracted[0, 0]
-            else:
-                extracted = np.squeeze(extracted, axis=0)
     elif record_type == 'logical':
         extracted = extract_logical(data)
     elif record_type == 'character':
@@ -365,7 +358,8 @@ def extract_complex(data, shape):
     """
     extracted = 1j * data[1]
     extracted.real = data[0]
-    return extracted.reshape(shape, order='F')
+    extracted = extracted.reshape(shape, order='F')
+    return reduce_array(extracted)
 
 
 def extract_logical(data):
@@ -373,8 +367,8 @@ def extract_logical(data):
 
     Parameters
     -----------
-    data : ndarray or scalar
-        Array or scalar of uint8 values clipped to 0 or 1
+    data : ndarray
+        Array of uint8 values clipped to 0 or 1
 
     Returns
     -------
@@ -382,11 +376,8 @@ def extract_logical(data):
         The extracted boolean or boolean array
 
     """
-    if np.isscalar(data):
-        data = bool(data)
-    else:
-        data = data.astype(bool)
-    return data
+    data = np.asarray(data, dtype=bool)
+    return reduce_array(data)
 
 
 def extract_numeric(data):
@@ -403,7 +394,7 @@ def extract_numeric(data):
         The input data
 
     """
-    return data
+    return reduce_array(data)
 
 
 def extract_sparse(data):
@@ -676,6 +667,18 @@ def get_decoded(dict_like, *attrs):
         attr: value.decode('ascii') if isinstance(value, bytes) else value
         for attr, value in items
     }
+
+
+def reduce_array(arr):
+    """ Reduce a 2d row-array or scalar to 1 or 0 dimensions, respectively. """
+    # squeeze leading dimension if this is a MATLAB row array
+    if arr.ndim == 2 and arr.shape[0] == 1:
+        # if it's a scalar, go all the way
+        if arr.shape[1] == 1:
+            arr = arr[0, 0]
+        else:
+            arr = np.squeeze(arr, axis=0)
+    return arr
 
 
 def unnest(data):

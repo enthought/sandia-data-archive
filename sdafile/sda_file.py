@@ -557,7 +557,6 @@ class SDAFile(object):
             raise ValueError(record_type)
 
         attrs['Empty'] = 'yes' if nr == 0 else 'no'
-        set_encoded(grp.attrs, **attrs)
 
         for label, sub_data in zip(labels, data):
             sub_rec_type, sub_data, sub_extra = infer_record_type(sub_data)
@@ -576,21 +575,17 @@ class SDAFile(object):
                     sub_grp, deflate, sub_rec_type, sub_data, sub_extra
                 )
 
+        # Do this last because primitive sub-records can modify the Empty
+        # attribute.
+        set_encoded(grp.attrs, **attrs)
+
     def _insert_primitive_data(self, grp, label, deflate, record_type, data,
                                extra):
         """ Prepare primitive data for storage and store it. """
         data, original_shape = coerce_primitive(record_type, data, extra)
-        empty = 'no'
-        if np.isscalar(data) or data.shape == ():
-            compression = None
-            maxshape = None
-            if np.isnan(data):
-                empty = 'yes'
-        else:
-            compression = deflate
-            maxshape = (None,) * data.ndim
-            if np.squeeze(data).shape == (0,):
-                empty = 'yes'
+        empty = 'yes' if (np.isnan(data).all() or data.size == 0) else 'no'
+        compression = deflate
+        maxshape = (None,) * data.ndim
 
         with self._h5file('r+') as h5file:
             set_encoded(

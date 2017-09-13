@@ -4,7 +4,7 @@ import string
 import unittest
 
 import numpy as np
-from numpy.testing import assert_array_equal
+from numpy.testing import assert_array_equal, assert_equal
 from scipy.sparse import coo_matrix
 
 from sdafile.exceptions import BadSDAFile
@@ -64,7 +64,7 @@ class TestUtils(unittest.TestCase):
     def test_coerce_character(self):
         coerced = coerce_character(string.printable)
         self.assertEqual(coerced.dtype, np.dtype(np.uint8))
-        expected = np.array([ord(c) for c in string.printable], np.uint8)
+        expected = np.array([[ord(c) for c in string.printable]], np.uint8)
         assert_array_equal(coerced, expected)
 
     def test_coerce_primitive(self):
@@ -108,7 +108,7 @@ class TestUtils(unittest.TestCase):
         x = np.array([True, False, True, True])
         coerced = coerce_logical(x)
         self.assertEqual(coerced.dtype, np.dtype(np.uint8))
-        assert_array_equal(coerced, [1, 0, 1, 1])
+        assert_array_equal(coerced, [[1, 0, 1, 1]])
 
     def test_coerce_numeric(self):
         for data, typ in TEST_SCALARS:
@@ -118,8 +118,7 @@ class TestUtils(unittest.TestCase):
         for data, typ in TEST_ARRAYS:
             if typ == 'numeric' and isinstance(data, np.ndarray):
                 coerced = coerce_numeric(data)
-                assert_array_equal(coerced, data)
-                self.assertEqual(coerced.dtype, data.dtype)
+                assert_array_equal(coerced, np.atleast_2d(data))
 
     def test_coerce_sparse(self):
         row = np.array([3, 4, 5, 6])
@@ -216,21 +215,15 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(extract_logical(0), False)
 
         expected = np.array([True, False, True, True], dtype=bool)
-        stored = np.array([1, 0, 1, 1], dtype=np.uint8)
+        stored = np.array([[1, 0, 1, 1]], dtype=np.uint8)
         extracted = extract_logical(stored)
         self.assertEqual(extracted.dtype, expected.dtype)
         assert_array_equal(extracted, expected)
 
     def test_extract_numeric(self):
-        for data, typ in TEST_SCALARS:
+        for data, typ in TEST_SCALARS + TEST_ARRAYS:
             if typ == 'numeric':
-                self.assertEqual(extract_numeric(data), data)
-
-        for data, typ in TEST_ARRAYS:
-            if typ == 'numeric' and isinstance(data, np.ndarray):
-                extracted = extract_numeric(data)
-                assert_array_equal(extracted, data)
-                self.assertEqual(data.dtype, extracted.dtype)
+                assert_equal(extract_numeric(coerce_numeric(data)), data)
 
     def test_extract_sparse(self):
         row = np.array([0, 2])
