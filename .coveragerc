@@ -1,6 +1,6 @@
 [run]
 branch = True
-source = sda
+source = sdafile
 omit = */tests/*
 
 [report]

@@ -9,6 +9,16 @@ with open(version_filename) as version_file:
     exec(version_file.read(), version_py_locals)
     version = version_py_locals["version"]
 
+
+install_requires = [
+    "h5py", 
+    "scipy", 
+    "pandas", 
+    "numpy", 
+    "packaging", 
+]
+
+
 setup(
     name="sdafile",
     version=version,
@@ -16,6 +26,7 @@ setup(
     author="Christopher L. Farrow",
     author_email="cfarrow@enthought.com",
     maintainer="Sandia National Laboratories",
+    url="https://github.com/enthought/sandia-data-archive",
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",
         "Intended Audience :: Developers",
@@ -35,6 +46,7 @@ setup(
         'Tools for reading, writing, altering, and inspecting Sandia Data '
         'Archive (SDA) files.'
     ),
+    install_requires=install_requires,
     license='BSD',
     platforms=["Windows", "Linux", "Mac OS-X", "Unix", "Solaris"],
     zip_safe=True,
