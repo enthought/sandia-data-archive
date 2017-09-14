@@ -8,7 +8,6 @@ interaction with HDF5 are not included here.
 
 import collections
 from datetime import datetime
-import io
 import re
 import string
 import time
@@ -163,7 +162,7 @@ def coerce_file(data):
 
     Parameters
     ----------
-    data : file
+    data : file-like
         An open file to read
 
     Returns
@@ -570,8 +569,9 @@ def infer_record_type(obj):
         Non-string scalars are inferred to be 'numeric' if numeric, or
         'logical' if boolean.
 
-    file :
-        Files are inferred to be 'file' records.
+    file-like :
+        File-like objects (with a 'read' method) are inferred to be 'file'
+        records.
 
     other :
         Arrays of characters are not supported. Convert to a string.
@@ -610,7 +610,7 @@ def infer_record_type(obj):
     if isinstance(obj, collections.Mapping):
         return 'structure', obj, None
 
-    if isinstance(obj, io.IOBase):
+    if hasattr(obj, 'read'):
         return 'file', obj, None
 
     # numeric and logical scalars and arrays

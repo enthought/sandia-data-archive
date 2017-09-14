@@ -269,8 +269,9 @@ class SDAFile(object):
             Non-string scalars are stored as 'numeric' if numeric, or 'logical'
             if boolean.
 
-        file :
-            The contents of file objects are stored as 'file' records.
+        file-like :
+            The contents of a file-like objects (with a 'read' method) are
+            stored as 'file' records.
 
         other :
             Arrays of characters are not supported. Convert to a string.
