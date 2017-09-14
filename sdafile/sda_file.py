@@ -95,14 +95,17 @@ class SDAFile(object):
 
     @property
     def FileFormat(self):
+        """ The 'FileFormat' file attribute. """
         return self._get_attr('FileFormat')
 
     @property
     def FormatVersion(self):
+        """ The format version from the SDA file. """
         return self._get_attr('FormatVersion')
 
     @property
     def Writable(self):
+        """ The 'Writable' flag from the SDA file. """
         return self._get_attr('Writable')
 
     @Writable.setter
@@ -116,10 +119,12 @@ class SDAFile(object):
 
     @property
     def Created(self):
+        """ The time the file was created. """
         return self._get_attr('Created')
 
     @property
     def Updated(self):
+        """ The time the file was last updated. """
         return self._get_attr('Updated')
 
     # Public
@@ -153,11 +158,16 @@ class SDAFile(object):
         label : str
             The data label.
 
+        Returns
+        -------
+        data : object
+            Archive data associated with the label.
+
         Notes
         -----
-        Sparse numeric data is extracted as scipy.sparse.coo_matrix. This
-        format does not support all numpy operations. See the
-        ``scipy.sparse.coo_matrix`` documentation for details.
+        Sparse numeric data is extracted as
+        :class:`coo_matrix<scipy:scipy.sparse.coo_matrix>`. This format does
+        not support all numpy operations.
 
         Raises
         ------
@@ -198,20 +208,20 @@ class SDAFile(object):
 
         sequences :
             Lists, tuples, and anything else that identifies as a
-            collections.Sequence are stored as 'cell' records, no
-            matter the contents.
+            collections.abc.Sequence are stored as 'cell' records, no matter
+            the contents.
 
         mappings :
             Dictionaries and anything else that identifies as
-            collections.Mapping and not another type listed here are stored as
-            'structure' records.
+            collections.abc.Sequence and not another type listed here are
+            stored as 'structure' records.
 
         numpy arrays :
             If the dtype is a supported numeric type, then a numpy array is
             stored as a 'numeric' record. Arrays of 'bool' type are stored as
             'logical' records. Object arrays are stored as 'cell' records.
 
-        sparse arrays (from scipy.sparse) :
+        sparse arrays (:class:`coo_matrix<scipy:scipy.sparse.coo_matrix>`) :
             These are stored as 'numeric' records if the dtype is a type
             supported for numpy arrays.
 
@@ -230,7 +240,7 @@ class SDAFile(object):
             Object arrays are not supported. Cast to another dtype or turn into
             a list.
 
-        Anything not listed above is not supported.
+        Anything not listed above is not (intentionally) supported.
 
         """
         self._validate_can_write()
@@ -269,7 +279,14 @@ class SDAFile(object):
                     raise
 
     def labels(self):
-        """ Get data labels from the archive. """
+        """ Get data labels from the archive.
+
+        Returns
+        -------
+        labels : list of str
+            Labels from the archive.
+
+        """
         with self._h5file('r') as h5file:
             return list(h5file.keys())
 
@@ -345,7 +362,7 @@ class SDAFile(object):
 
         Returns
         -------
-        summary : DataFrame
+        summary : :class:`DataFrame<pandas:pandas.DataFrame>`
             A table summarizing the archive.
 
         """
@@ -382,12 +399,12 @@ class SDAFile(object):
         label : str
             The record label.
         data :
-            The data with which to replacing the record.
+            The data with which to replace the record.
 
         Notes
         -----
         This is equivalent to removing the data and inserting a new entry using
-        the same label, description, and deflate option.
+        the same ``label``, ``description``, and ``deflate`` options.
 
         """
         self._validate_can_write()
@@ -403,9 +420,9 @@ class SDAFile(object):
         Parameters
         ----------
         label : str
-            The record label.
+            Label of the object record.
         data : dict
-            The data with which to replacing the object record.
+            The data with which to replace the object record.
 
         Notes
         -----
