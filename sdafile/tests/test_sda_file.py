@@ -1,3 +1,4 @@
+import io
 import os
 import random
 import shutil
@@ -16,9 +17,9 @@ from sdafile.testing import (
     temporary_file, temporary_h5file
 )
 from sdafile.utils import (
-    coerce_character, coerce_complex, coerce_logical, coerce_numeric,
-    coerce_primitive, coerce_sparse, coerce_sparse_complex, get_decoded,
-    infer_record_type, is_primitive, set_encoded, write_header
+    coerce_character, coerce_complex, coerce_file, coerce_logical,
+    coerce_numeric, coerce_simple, coerce_sparse, coerce_sparse_complex,
+    get_decoded, infer_record_type, is_simple, set_encoded, write_header
 )
 
 
@@ -222,14 +223,14 @@ class TestSDAFileInsert(unittest.TestCase):
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
                 expected = coerce_character(obj)
-                self.assertPrimitiveRecord(
+                self.assertSimpleRecord(
                     sda_file, 'character', label, deflate, 'no', expected
                 )
 
             label = 'test_empty'
             deflate = 0
             sda_file.insert(label, '', label, deflate)
-            self.assertPrimitiveRecord(
+            self.assertSimpleRecord(
                 sda_file, 'character', label, deflate, 'yes', None
             )
 
@@ -243,13 +244,13 @@ class TestSDAFileInsert(unittest.TestCase):
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
                 expected = coerce_logical(np.asarray(obj))
-                self.assertPrimitiveRecord(
+                self.assertSimpleRecord(
                     sda_file, 'logical', label, deflate, 'no', expected
                 )
 
             arr = np.array([], dtype=bool)
             sda_file.insert('empty', arr, 'empty')
-            self.assertPrimitiveRecord(
+            self.assertSimpleRecord(
                 sda_file, 'logical', 'empty', 0, 'yes', None
             )
 
@@ -263,7 +264,7 @@ class TestSDAFileInsert(unittest.TestCase):
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
                 expected = 1 if obj else 0
-                self.assertPrimitiveRecord(
+                self.assertSimpleRecord(
                     sda_file, 'logical', label, deflate, 'no', expected
                 )
 
@@ -280,14 +281,14 @@ class TestSDAFileInsert(unittest.TestCase):
                 if is_complex:
                     expected = coerce_complex(np.asarray(obj))
                     shape = np.atleast_2d(obj).shape
-                    self.assertPrimitiveRecord(
+                    self.assertSimpleRecord(
                         sda_file, 'numeric', label, deflate, 'no', expected,
                         Complex='yes' if is_complex else 'no',
                         ArraySize=shape
                     )
                 else:
                     expected = coerce_numeric(np.asarray(obj))
-                    self.assertPrimitiveRecord(
+                    self.assertSimpleRecord(
                         sda_file, 'numeric', label, deflate, 'no', expected,
                         Complex='yes' if is_complex else 'no',
                     )
@@ -295,7 +296,7 @@ class TestSDAFileInsert(unittest.TestCase):
             label = 'test_empty'
             deflate = 0
             sda_file.insert(label, np.array([]), label, deflate)
-            self.assertPrimitiveRecord(
+            self.assertSimpleRecord(
                 sda_file, 'numeric', label, deflate, 'yes', None,
                 Complex='no'
             )
@@ -314,7 +315,7 @@ class TestSDAFileInsert(unittest.TestCase):
                     expected = coerce_complex(obj)
                 else:
                     expected = coerce_numeric(obj)
-                self.assertPrimitiveRecord(
+                self.assertSimpleRecord(
                     sda_file, 'numeric', label, deflate, 'no', expected,
                     Complex='yes' if is_complex else 'no',
                     Sparse='no'
@@ -323,7 +324,7 @@ class TestSDAFileInsert(unittest.TestCase):
             label = 'test_nan'
             deflate = 0
             sda_file.insert(label, np.nan, label, deflate)
-            self.assertPrimitiveRecord(
+            self.assertSimpleRecord(
                 sda_file, 'numeric', label, deflate, 'yes', None
             )
 
@@ -336,7 +337,7 @@ class TestSDAFileInsert(unittest.TestCase):
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
                 expected = coerce_sparse(obj.tocoo())
-                self.assertPrimitiveRecord(
+                self.assertSimpleRecord(
                     sda_file, 'numeric', label, deflate, 'no', expected,
                     Complex='no', Sparse='yes',
                 )
@@ -350,7 +351,7 @@ class TestSDAFileInsert(unittest.TestCase):
                 deflate = i % 10
                 sda_file.insert(label, obj, label, deflate)
                 expected = coerce_sparse_complex(obj.tocoo())
-                self.assertPrimitiveRecord(
+                self.assertSimpleRecord(
                     sda_file, 'numeric', label, deflate, 'no', expected,
                     Complex='yes', Sparse='yes',
                 )
@@ -377,6 +378,55 @@ class TestSDAFileInsert(unittest.TestCase):
                     Empty='no',
                     RecordSize=record_size,
                 )
+
+    def test_file(self):
+
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            contents = b'Hello world'
+            expected = coerce_file(io.BytesIO(contents))
+            label = 'file_test'
+
+            with temporary_file() as source_file:
+                with open(source_file, 'wb') as f:
+                    f.write(contents)
+                with open(source_file, 'rb') as f:
+                    sda_file.insert(label, f, label)
+
+            self.assertSimpleRecord(
+                sda_file, 'file', label, 0, 'no', expected,
+            )
+
+    def test_from_file(self):
+
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            contents = b'Hello world'
+            expected = coerce_file(io.BytesIO(contents))
+
+            with temporary_file() as source_file:
+                with open(source_file, 'wb') as f:
+                    f.write(contents)
+
+                label = sda_file.insert_from_file(source_file)
+                sda_file.describe(label, label)
+
+                self.assertTrue(source_file.endswith(label))
+            self.assertSimpleRecord(
+                sda_file, 'file', label, 0, 'no', expected,
+            )
+
+    def test_from_file_failure(self):
+
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            with temporary_file() as source_file:
+                pass
+
+            # The source file is gone
+            with self.assertRaises(ValueError):
+                sda_file.insert_from_file(source_file)
 
     def test_structure(self):
         with temporary_file() as file_path:
@@ -421,8 +471,8 @@ class TestSDAFileInsert(unittest.TestCase):
             group = h5file[label]
             self.assertCompositeGroup(group, expected, **group_attrs)
 
-    def assertPrimitiveRecord(self, sda_file, record_type, label, deflate,
-                              empty, expected, **data_attrs):
+    def assertSimpleRecord(self, sda_file, record_type, label, deflate,
+                           empty, expected, **data_attrs):
         with sda_file._h5file('r') as h5file:
             group = h5file[label]
             self.assertAttrs(
@@ -463,8 +513,8 @@ class TestSDAFileInsert(unittest.TestCase):
 
         for label, obj in zip(labels, expected):
             sub_record_type, data, extra = infer_record_type(obj)
-            if is_primitive(sub_record_type):
-                data, _ = coerce_primitive(sub_record_type, data, extra)
+            if is_simple(sub_record_type):
+                data, _ = coerce_simple(sub_record_type, data, extra)
                 data_set = group[label]
                 self.assertDataSet(data_set, data)
             elif sub_record_type == 'cell':
@@ -529,6 +579,47 @@ class TestSDAFileExtract(unittest.TestCase):
             sda_file.insert('test2', '')
             extracted = sda_file.extract('test2')
             self.assertEqual(extracted, expected)
+
+    def test_file(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            contents = b'Hello world'
+            sda_file.insert('test', io.BytesIO(contents))
+            extracted = sda_file.extract('test')
+            self.assertEqual(extracted, contents)
+
+    def test_to_file(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            contents = b'Hello world'
+            sda_file.insert('test', io.BytesIO(contents))
+
+            with temporary_file() as destination_path:
+                with self.assertRaises(IOError):
+                    sda_file.extract_to_file('test', destination_path)
+
+                sda_file.extract_to_file('test', destination_path, True)
+
+                with open(destination_path, 'rb') as f:
+                    extracted = f.read()
+
+            self.assertEqual(extracted, contents)
+
+            # The file is closed and gone, try again
+            sda_file.extract_to_file('test', destination_path, True)
+            with open(destination_path, 'rb') as f:
+                extracted = f.read()
+
+            self.assertEqual(extracted, contents)
+
+    def test_to_file_non_file(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            sda_file.insert('test', 'not a file record')
+
+            with temporary_file() as destination_path:
+                with self.assertRaises(ValueError):
+                    sda_file.extract_to_file('test', destination_path, True)
 
     def test_logical_scalar(self):
         with temporary_file() as file_path:

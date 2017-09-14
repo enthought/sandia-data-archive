@@ -19,9 +19,9 @@ import h5py
 import numpy as np
 
 from .utils import (
-    are_record_types_equivalent, coerce_primitive, error_if_bad_header,
-    error_if_not_writable, extract_primitive, get_decoded, get_empty_for_type,
-    infer_record_type, is_primitive, is_supported, is_valid_matlab_field_label,
+    are_record_types_equivalent, coerce_simple, error_if_bad_header,
+    error_if_not_writable, extract_simple, get_decoded, get_empty_for_type,
+    infer_record_type, is_simple, is_supported, is_valid_matlab_field_label,
     is_valid_writable, set_encoded, unnest, update_header, write_header,
 )
 
@@ -181,6 +181,40 @@ class SDAFile(object):
             attrs = get_decoded(grp.attrs)
             return self._extract_data_from_group(grp, label, attrs)
 
+    def extract_to_file(self, label, path, overwrite=False):
+        """ Extract a file record to file.
+
+        Parameters
+        ----------
+        label : str
+            Label of the file record.
+        path : str
+            The path to which the file is to be written.
+        overwrite : bool, optional
+            Unless specified as True, an existing file with the chosen name
+            will not be overwritten by this method.
+
+        Raises
+        ------
+        IOError if `overwrite` is False and the destintation file exists.
+
+        """
+
+        if op.exists(path) and not overwrite:
+            raise IOError("File '{}' exists. Will not overwrite.".format(path))
+        self._validate_labels(label, must_exist=True)
+
+        # Check that archive is a file archive
+        with self._h5file('r') as h5file:
+            # Check the general structure of the data and file
+            grp = h5file[label]
+            attrs = get_decoded(grp.attrs, 'RecordType')
+            if not attrs['RecordType'] == 'file':
+                raise ValueError("'{}' is not a file record".format(label))
+
+        with open(path, 'wb') as f:
+            f.write(self.extract(label))
+
     def insert(self, label, data, description='', deflate=0):
         """ Insert data into an SDA file.
 
@@ -235,12 +269,19 @@ class SDAFile(object):
             Non-string scalars are stored as 'numeric' if numeric, or 'logical'
             if boolean.
 
+        file :
+            The contents of file objects are stored as 'file' records.
+
         other :
             Arrays of characters are not supported. Convert to a string.
             Object arrays are not supported. Cast to another dtype or turn into
             a list.
 
         Anything not listed above is not (intentionally) supported.
+
+        See Also
+        --------
+        insert_from_file : Insert contents of a named file.
 
         """
         self._validate_can_write()
@@ -263,8 +304,8 @@ class SDAFile(object):
                 Description=description,
             )
 
-            if is_primitive(record_type):
-                self._insert_primitive_data(
+            if is_simple(record_type):
+                self._insert_simple_data(
                     grp, label, deflate, record_type, cast_obj, extra
                 )
             else:
@@ -277,6 +318,39 @@ class SDAFile(object):
                     # inconsistent state
                     del h5file[label]
                     raise
+
+    def insert_from_file(self, path, description='', deflate=0):
+        """ Insert the contents of a file as a file record.
+
+        Parameters
+        ----------
+        path : str
+            The path to the file. The basename of the path will be used as the
+            record label.
+        description : str, optional
+            A description to accompany the data
+        deflate : int, optional
+            An integer value from 0 to 9, specifying the compression level to
+            be applied to the stored data.
+
+        Returns
+        -------
+        label : str
+            The label under which the file was stored.
+
+
+        See Also
+        --------
+        insert : Insert data into the archive
+
+        """
+        if not op.isfile(path):
+            raise ValueError("File '{}' does not exist".format(path))
+
+        label = op.basename(path)
+        with open(path, 'rb') as f:
+            self.insert(label, f, description, deflate)
+        return label
 
     def labels(self):
         """ Get data labels from the archive.
@@ -515,10 +589,10 @@ class SDAFile(object):
         if empty == 'yes':
             return get_empty_for_type(record_type)
 
-        if is_primitive(record_type):
+        if is_simple(record_type):
             ds = grp[label]
             data_attrs = get_decoded(ds.attrs)
-            return extract_primitive(record_type, ds[()], data_attrs)
+            return extract_simple(record_type, ds[()], data_attrs)
 
         if record_type in ('cell', 'structures', 'objects'):
             record_size = attrs['RecordSize'].astype(int)
@@ -533,7 +607,6 @@ class SDAFile(object):
             labels = attrs['FieldNames'].split()
             data = self._extract_composite_data(grp, labels)
             data = dict(zip(labels, data))
-
         return data
 
     def _extract_composite_data(self, grp, labels):
@@ -543,8 +616,8 @@ class SDAFile(object):
             sub_obj = grp[label]
             attrs = get_decoded(sub_obj.attrs)
             record_type = attrs['RecordType']
-            if is_primitive(record_type):
-                element = extract_primitive(record_type, sub_obj[()], attrs)
+            if is_simple(record_type):
+                element = extract_simple(record_type, sub_obj[()], attrs)
             else:  # composite type
                 element = self._extract_data_from_group(sub_obj, label, attrs)
             extracted.append(element)
@@ -578,8 +651,8 @@ class SDAFile(object):
 
         for label, sub_data in zip(labels, data):
             sub_rec_type, sub_data, sub_extra = infer_record_type(sub_data)
-            if is_primitive(sub_rec_type):
-                self._insert_primitive_data(
+            if is_simple(sub_rec_type):
+                self._insert_simple_data(
                     grp, label, deflate, sub_rec_type, sub_data,
                     sub_extra
                 )
@@ -597,10 +670,10 @@ class SDAFile(object):
         # attribute.
         set_encoded(grp.attrs, **attrs)
 
-    def _insert_primitive_data(self, grp, label, deflate, record_type, data,
-                               extra):
+    def _insert_simple_data(self, grp, label, deflate, record_type, data,
+                            extra):
         """ Prepare primitive data for storage and store it. """
-        data, original_shape = coerce_primitive(record_type, data, extra)
+        data, original_shape = coerce_simple(record_type, data, extra)
         empty = 'yes' if (np.isnan(data).all() or data.size == 0) else 'no'
         compression = deflate
         maxshape = (None,) * data.ndim
