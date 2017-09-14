@@ -1,4 +1,5 @@
 import datetime
+import io
 from itertools import combinations
 import string
 import unittest
@@ -10,18 +11,20 @@ from scipy.sparse import coo_matrix
 from sdafile.exceptions import BadSDAFile
 from sdafile.testing import (
     BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELL, TEST_SCALARS, TEST_SPARSE,
-    TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, temporary_h5file
+    TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, temporary_file,
+    temporary_h5file
 )
 from sdafile.utils import (
     CELL_EQUIVALENT, STRUCTURE_EQUIVALENT, SUPPORTED_RECORD_TYPES,
-    are_record_types_equivalent, coerce_character, coerce_complex,
-    coerce_logical, coerce_numeric, coerce_primitive, coerce_sparse,
+    are_record_types_equivalent, coerce_character, coerce_complex, coerce_file,
+    coerce_logical, coerce_numeric, coerce_simple, coerce_sparse,
     coerce_sparse_complex, error_if_bad_attr, error_if_bad_header,
-    error_if_not_writable, extract_character, extract_complex, extract_logical,
-    extract_numeric, extract_sparse, extract_sparse_complex, get_date_str,
-    get_decoded, get_empty_for_type, infer_record_type, is_valid_date,
-    is_valid_file_format, is_valid_format_version, is_valid_matlab_field_label,
-    is_valid_writable, set_encoded, unnest, update_header, write_header
+    error_if_not_writable, extract_character, extract_complex, extract_file,
+    extract_logical, extract_numeric, extract_sparse, extract_sparse_complex,
+    get_date_str, get_decoded, get_empty_for_type, infer_record_type,
+    is_valid_date, is_valid_file_format, is_valid_format_version,
+    is_valid_matlab_field_label, is_valid_writable, set_encoded, unnest,
+    update_header, write_header
 )
 
 
@@ -67,9 +70,9 @@ class TestUtils(unittest.TestCase):
         expected = np.array([[ord(c) for c in string.printable]], np.uint8)
         assert_array_equal(coerced, expected)
 
-    def test_coerce_primitive(self):
+    def test_coerce_simple(self):
         with self.assertRaises(ValueError):
-            coerce_primitive('foo', 0, None)
+            coerce_simple('foo', 0, None)
 
     def test_coerce_complex(self):
         data = np.arange(6, dtype=np.complex128)
@@ -96,6 +99,13 @@ class TestUtils(unittest.TestCase):
         coerced = coerce_complex(c_data)
         self.assertEqual(expected.dtype, coerced.dtype)
         assert_array_equal(expected, coerced)
+
+    def test_coerce_file(self):
+        contents = b'0123456789ABCDEF'
+        buf = io.BytesIO(contents)
+        coerced = coerce_file(buf)
+        expected = np.atleast_2d(np.frombuffer(contents, dtype=np.uint8))
+        assert_array_equal(coerced, expected)
 
     def test_coerce_logical(self):
         self.assertEqual(coerce_logical(True), 1)
@@ -194,7 +204,7 @@ class TestUtils(unittest.TestCase):
         expected = np.arange(6, dtype=np.complex128)
         expected.imag = -1
 
-        stored = np.array([expected.real, expected.imag], dtype=np.float64)
+        stored = coerce_complex(expected)
         extracted = extract_complex(stored, (6,))
         self.assertEqual(expected.dtype, extracted.dtype)
         assert_array_equal(expected, extracted)
@@ -209,6 +219,13 @@ class TestUtils(unittest.TestCase):
         extracted = extract_complex(stored, (2, 3))
         self.assertEqual(expected_2d.dtype, extracted.dtype)
         assert_array_equal(expected_2d, extracted)
+
+    def test_extract_file(self):
+        contents = b'0123456789ABCDEF'
+        buf = io.BytesIO(contents)
+        stored = coerce_file(buf)
+        extracted = extract_file(stored)
+        self.assertEqual(extracted, contents)
 
     def test_extract_logical(self):
         self.assertEqual(extract_logical(1), True)
@@ -274,6 +291,7 @@ class TestUtils(unittest.TestCase):
         assert_array_equal(
             np.array([], dtype=bool), get_empty_for_type('logical')
         )
+        self.assertEqual(get_empty_for_type('file'), b'')
         self.assertTrue(np.isnan(get_empty_for_type('numeric')))
         self.assertEqual(get_empty_for_type('cell'), [])
         self.assertEqual(get_empty_for_type('structure'), {})
@@ -411,6 +429,14 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(record_type, 'structure')
             self.assertIsNone(extra)
             self.assertIs(cast_obj, obj)
+
+        # file
+        with temporary_file() as filename:
+            with open(filename, 'w') as f:
+                record_type, cast_obj, extra = infer_record_type(f)
+            self.assertEqual(record_type, 'file')
+            self.assertIsNone(extra)
+            self.assertIs(cast_obj, f)
 
         # Unsupported
         for obj in TEST_UNSUPPORTED:

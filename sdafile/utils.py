@@ -25,11 +25,10 @@ DATE_FORMAT = "%d-%b-%Y %H:%M:%S"
 DATE_FORMAT_SHORT = "%d-%b-%Y"
 
 # Record groups.
-# 'structures', 'object', and 'objects' are read- and replace-only
-PRIMITIVE_RECORD_TYPES = ('character', 'logical', 'numeric')
+SIMPLE_RECORD_TYPES = ('character', 'logical', 'numeric', 'file')
 SUPPORTED_RECORD_TYPES = (
-    'character', 'logical', 'numeric', 'cell', 'structure', 'structures',
-    'object', 'objects',
+    'character', 'file', 'logical', 'numeric', 'cell', 'structure',
+    'structures', 'object', 'objects',
 )
 
 
@@ -48,6 +47,7 @@ UNSUPPORTED_NUMERIC_TYPE_CODES = {
 EMPTY_FOR_TYPE = {
     'numeric': np.nan,
     'character': '',
+    'file': b'',
     'logical': np.array([], dtype=bool),
     'cell': [],
     'structure': {}
@@ -72,8 +72,8 @@ def are_record_types_equivalent(rt1, rt2):
     return False
 
 
-def coerce_primitive(record_type, data, extra):
-    """ Coerce a primitive type based on its record type.
+def coerce_simple(record_type, data, extra):
+    """ Coerce a simple record based on its record type.
 
     Parameters
     ----------
@@ -110,6 +110,8 @@ def coerce_primitive(record_type, data, extra):
         data = coerce_logical(data)
     elif record_type == 'character':
         data = coerce_character(data)
+    elif record_type == 'file':
+        data = coerce_file(data)
     else:
         # Should not happen
         msg = "Unrecognized record type '{}'".format(record_type)
@@ -153,6 +155,24 @@ def coerce_complex(data):
     """
     data = np.atleast_2d(data).ravel(order='F')
     return np.array([data.real, data.imag])
+
+
+def coerce_file(data):
+    """ Coerce a file object.
+
+    Parameters
+    ----------
+    data : file-like
+        An open file to read
+
+    Returns
+    -------
+    coerced : ndarray
+        The contents of the file as a byte array
+
+    """
+    contents = data.read()
+    return np.atleast_2d(np.frombuffer(contents, dtype=np.uint8))
 
 
 def coerce_logical(data):
@@ -282,22 +302,22 @@ def error_if_not_writable(h5file):
         raise IOError(msg)
 
 
-def extract_primitive(record_type, data, data_attrs):
-    """ Extract primitive data from its raw storage format.
+def extract_simple(record_type, data, data_attrs):
+    """ Extract simple data from its raw storage format.
 
     Parameters
     -----------
     data : ndarray
         Data extracted from hdf5 dataset storage
     record_type : str
-        The primitive data type
+        The simple data type
     data_attrs : dict
         Attributes associated with the stored dataset
 
     Returns
     -------
     extracted :
-        The extracted primitive data
+        The extracted simple data
 
     """
     complex_flag = data_attrs.get('Complex', 'no')
@@ -318,6 +338,8 @@ def extract_primitive(record_type, data, data_attrs):
         extracted = extract_logical(data)
     elif record_type == 'character':
         extracted = extract_character(data)
+    elif record_type == 'file':
+        extracted = extract_file(data)
 
     return extracted
 
@@ -360,6 +382,23 @@ def extract_complex(data, shape):
     extracted.real = data[0]
     extracted = extracted.reshape(shape, order='F')
     return reduce_array(extracted)
+
+
+def extract_file(data):
+    """ Extract file data.
+
+    Parameters
+    -----------
+    data : ndarray
+        The file contents as a byte array.
+
+    Returns
+    -------
+    extracted : bytes
+        The data is left alone.
+
+    """
+    return data.tobytes()
 
 
 def extract_logical(data):
@@ -530,6 +569,10 @@ def infer_record_type(obj):
         Non-string scalars are inferred to be 'numeric' if numeric, or
         'logical' if boolean.
 
+    file-like :
+        File-like objects (with a 'read' method) are inferred to be 'file'
+        records.
+
     other :
         Arrays of characters are not supported. Convert to a string.
 
@@ -567,6 +610,9 @@ def infer_record_type(obj):
     if isinstance(obj, collections.Mapping):
         return 'structure', obj, None
 
+    if hasattr(obj, 'read'):
+        return 'file', obj, None
+
     # numeric and logical scalars and arrays
     cast_obj = obj
     if is_scalar:
@@ -593,9 +639,9 @@ def infer_record_type(obj):
     return None, None, None
 
 
-def is_primitive(record_type):
-    """ Check if record type is primitive. """
-    return record_type in PRIMITIVE_RECORD_TYPES
+def is_simple(record_type):
+    """ Check if record type is simple (primitive or 'file'). """
+    return record_type in SIMPLE_RECORD_TYPES
 
 
 def is_supported(record_type):

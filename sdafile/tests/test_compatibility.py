@@ -36,7 +36,9 @@ class TestSDAReference(unittest.TestCase):
 
     def test_ReferenceArchivedotm(self):
         label = 'ReferenceArchive.m'
-        self.assertUnsupported(label)
+        with self.sda_file._h5file('r') as h5file:
+            contents = h5file[label][label][()].tobytes()
+        self.assertScalar(label, contents)
 
     def test_example_A1(self):
         """ 5x1 zeros """
