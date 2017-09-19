@@ -204,12 +204,9 @@ class SDAFile(object):
         self._validate_labels(label, must_exist=True)
 
         # Check that archive is a file archive
-        with self._h5file('r') as h5file:
-            # Check the general structure of the data and file
-            grp = h5file[label]
-            attrs = get_decoded(grp.attrs, 'RecordType')
-            if not attrs['RecordType'] == 'file':
-                raise ValueError("'{}' is not a file record".format(label))
+        record_type = self._get_attr('RecordType', root=label)
+        if record_type != 'file':
+            raise ValueError("'{}' is not a file record".format(label))
 
         with open(path, 'wb') as f:
             f.write(self.extract(label))
@@ -316,7 +313,6 @@ class SDAFile(object):
         label : str
             The label under which the file was stored.
 
-
         See Also
         --------
         insert : Insert data into the archive
@@ -349,10 +345,6 @@ class SDAFile(object):
 
         """
         self._validate_can_write()
-        if len(labels) == 0:
-            msg = "Specify labels to remove"
-            raise ValueError(msg)
-
         self._validate_labels(labels, must_exist=True)
 
         # Create a new file so space is actually freed
@@ -534,16 +526,15 @@ class SDAFile(object):
         self.remove(label)
         self.insert(label, data, attrs['Description'], int(attrs['Deflate']))
 
-        # Fix the record type
+        # Fix the record type and updat the header
         with self._h5file('r+') as h5file:
-            # Check the general structure of the data and file
             grp = h5file[label]
             set_encoded(
                 grp.attrs,
                 RecordType='object',
                 Class=attrs['Class'],
             )
-            update_header(grp.attrs)
+            update_header(h5file.attrs)
 
     # Private
 
@@ -555,10 +546,14 @@ class SDAFile(object):
         finally:
             h5file.close()
 
-    def _get_attr(self, attr):
+    def _get_attr(self, attr, root=None):
         """ Get a named atribute as a string """
         with self._h5file('r') as h5file:
-            return get_decoded(h5file.attrs, attr)[attr]
+            if root is None:
+                obj = h5file
+            else:
+                obj = h5file[root]
+            return get_decoded(obj.attrs, attr)[attr]
 
     def _validate_can_write(self):
         """ Validate file mode and 'Writable' attr allow writing. """
@@ -570,6 +565,8 @@ class SDAFile(object):
     def _validate_labels(self, labels, can_exist=True, must_exist=False):
         if isinstance(labels, str):
             labels = [labels]
+        if len(labels) == 0:
+            raise ValueError("Must specify labels")
         for label in labels:
             if '/' in label or '\\' in label:
                 msg = r"label cannot contain '/' or '\'"
