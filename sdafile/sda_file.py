@@ -18,11 +18,11 @@ import tempfile
 import h5py
 import numpy as np
 
+from .extract import extract
 from .inserter import Inserter
 from .utils import (
     are_record_types_equivalent, error_if_bad_header, error_if_not_writable,
-    extract_simple, get_decoded, get_empty_for_type, infer_record_type,
-    is_simple, is_supported, is_valid_writable, set_encoded, unnest,
+    get_decoded, infer_record_type, is_valid_writable, set_encoded, unnest,
     update_header, write_header,
 )
 
@@ -178,9 +178,7 @@ class SDAFile(object):
         """
         self._validate_labels(label, must_exist=True)
         with self._h5file('r') as h5file:
-            grp = h5file[label]
-            attrs = get_decoded(grp.attrs)
-            return self._extract_data_from_group(grp, label, attrs)
+            return extract(h5file, label)
 
     def extract_to_file(self, label, path, overwrite=False):
         """ Extract a file record to file.
@@ -556,52 +554,6 @@ class SDAFile(object):
             yield h5file
         finally:
             h5file.close()
-
-    def _extract_data_from_group(self, grp, label, attrs):
-        """ Extract data from h5 group. ``label`` is the group label. """
-
-        record_type = attrs['RecordType']
-        if not is_supported(record_type):
-            msg = "RecordType '{}' is not supported".format(record_type)
-            raise ValueError(msg)
-
-        empty = attrs['Empty']
-        if empty == 'yes':
-            return get_empty_for_type(record_type)
-
-        if is_simple(record_type):
-            ds = grp[label]
-            data_attrs = get_decoded(ds.attrs)
-            return extract_simple(record_type, ds[()], data_attrs)
-
-        if record_type in ('cell', 'structures', 'objects'):
-            record_size = attrs['RecordSize'].astype(int)
-            nr = np.prod(record_size)
-            labels = ['element {}'.format(i) for i in range(1, nr + 1)]
-            data = self._extract_composite_data(grp, labels)
-            if record_size[0] > 1 or len(record_size) > 2:
-                data = np.array(
-                    data, dtype=object,
-                ).reshape(record_size, order='F')
-        elif record_type in ('structure', 'object'):
-            labels = attrs['FieldNames'].split()
-            data = self._extract_composite_data(grp, labels)
-            data = dict(zip(labels, data))
-        return data
-
-    def _extract_composite_data(self, grp, labels):
-        """ Extract composite data from a Group object with given labels. """
-        extracted = []
-        for label in labels:
-            sub_obj = grp[label]
-            attrs = get_decoded(sub_obj.attrs)
-            record_type = attrs['RecordType']
-            if is_simple(record_type):
-                element = extract_simple(record_type, sub_obj[()], attrs)
-            else:  # composite type
-                element = self._extract_data_from_group(sub_obj, label, attrs)
-            extracted.append(element)
-        return extracted
 
     def _get_attr(self, attr):
         """ Get a named atribute as a string """
