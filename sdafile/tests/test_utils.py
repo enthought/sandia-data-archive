@@ -379,9 +379,10 @@ class TestUtils(unittest.TestCase):
         # scalars
         for obj, typ in TEST_SCALARS:
             msg = 'record type of {!r} != {}'.format(obj, typ)
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, typ, msg=msg)
             self.assertEqual(cast_obj, obj)
+            self.assertFalse(is_empty)
             if np.iscomplexobj(obj):
                 self.assertEqual(extra, 'complex')
             else:
@@ -390,8 +391,9 @@ class TestUtils(unittest.TestCase):
         # arrays
         for obj, typ in TEST_ARRAYS:
             msg = 'record type of {!r} != {}'.format(obj, typ)
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, typ, msg=msg)
+            self.assertFalse(is_empty)
             assert_array_equal(cast_obj, np.asarray(obj))
             if np.iscomplexobj(obj):
                 self.assertEqual(extra, 'complex')
@@ -401,8 +403,9 @@ class TestUtils(unittest.TestCase):
         # sparse
         coo = TEST_SPARSE[0]
         for obj in TEST_SPARSE:
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, 'numeric')
+            self.assertFalse(is_empty)
             self.assertEqual(extra, 'sparse')
             self.assertIsInstance(cast_obj, coo_matrix)
             assert_array_equal(cast_obj.toarray(), coo.toarray())
@@ -410,37 +413,82 @@ class TestUtils(unittest.TestCase):
         # sparse+complex
         coo = TEST_SPARSE_COMPLEX[0]
         for obj in TEST_SPARSE_COMPLEX:
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, 'numeric')
+            self.assertFalse(is_empty)
             self.assertEqual(extra, 'sparse+complex')
             self.assertIsInstance(cast_obj, coo_matrix)
             assert_array_equal(cast_obj.toarray(), coo.toarray())
 
         # lists, tuples
         for obj in TEST_CELL:
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, 'cell')
+            self.assertFalse(is_empty)
             self.assertIsNone(extra)
             self.assertIs(cast_obj, obj)
 
         # dicts
         for obj in TEST_STRUCTURE:
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, 'structure')
+            self.assertFalse(is_empty)
             self.assertIsNone(extra)
             self.assertIs(cast_obj, obj)
 
         # file
         with temporary_file() as filename:
             with open(filename, 'w') as f:
-                record_type, cast_obj, extra = infer_record_type(f)
+                record_type, cast_obj, is_empty, extra = infer_record_type(f)
             self.assertEqual(record_type, 'file')
+            self.assertFalse(is_empty)
             self.assertIsNone(extra)
             self.assertIs(cast_obj, f)
+
+        # empty
+        record_type, _, is_empty, _ = infer_record_type('')
+        self.assertEqual(record_type, 'character')
+        self.assertTrue(is_empty)
+
+        record_type, _, is_empty, _ = infer_record_type([])
+        self.assertEqual(record_type, 'cell')
+        self.assertTrue(is_empty)
+
+        record_type, _, is_empty, _ = infer_record_type({})
+        self.assertEqual(record_type, 'structure')
+        self.assertTrue(is_empty)
+
+        record_type, _, is_empty, _ = infer_record_type(coo_matrix([]))
+        self.assertEqual(record_type, 'numeric')
+        self.assertTrue(is_empty)
+
+        record_type, _, is_empty, _ = infer_record_type(np.nan)
+        self.assertEqual(record_type, 'numeric')
+        self.assertTrue(is_empty)
+
+        data = np.array([])
+        record_type, _, is_empty, _ = infer_record_type(data)
+        self.assertEqual(record_type, 'numeric')
+        self.assertTrue(is_empty)
+
+        data = np.array([np.nan, np.nan])
+        record_type, _, is_empty, _ = infer_record_type(data)
+        self.assertEqual(record_type, 'numeric')
+        self.assertTrue(is_empty)
+
+        data = np.array([], dtype=bool)
+        record_type, _, is_empty, _ = infer_record_type(data)
+        self.assertEqual(record_type, 'logical')
+        self.assertTrue(is_empty)
+
+        data = np.array([], dtype=object)
+        record_type, _, is_empty, _ = infer_record_type(data)
+        self.assertEqual(record_type, 'cell')
+        self.assertTrue(is_empty)
 
         # Unsupported
         for obj in TEST_UNSUPPORTED:
             msg = 'record type of {!r} is not None'.format(obj)
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, _, extra = infer_record_type(obj)
             self.assertIsNone(record_type, msg=msg)
             self.assertIsNone(cast_obj)

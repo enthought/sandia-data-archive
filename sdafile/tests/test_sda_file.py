@@ -512,7 +512,7 @@ class TestSDAFileInsert(unittest.TestCase):
             labels, expected = zip(*expected.items())
 
         for label, obj in zip(labels, expected):
-            sub_record_type, data, extra = infer_record_type(obj)
+            sub_record_type, data, _, extra = infer_record_type(obj)
             if is_simple(sub_record_type):
                 data, _ = coerce_simple(sub_record_type, data, extra)
                 data_set = group[label]

@@ -528,6 +528,8 @@ def infer_record_type(obj):
     cast_obj :
         The object if scalar, the object cast as a numpy array if not, or None
         the type is unsupported.
+    is_empty : bool
+        Flag indicating whether the data is empty.
     extra :
         Extra information about the type. This may be None, 'sparse',
         'complex', or 'sparse+complex' for 'numeric' types, and will be None in
@@ -580,6 +582,8 @@ def infer_record_type(obj):
 
     """
 
+    UNSUPPORTED = None, None, None, None
+
     # Unwrap scalar arrays to simplify the following
     is_scalar = np.isscalar(obj)
     is_array = isinstance(obj, np.ndarray)
@@ -589,54 +593,71 @@ def infer_record_type(obj):
         is_array = isinstance(obj, np.ndarray)
 
     if isinstance(obj, (str, np.unicode)):  # Numpy string type is a str
-        return 'character', obj, None
+        is_empty = len(obj) == 0
+        extra = None
+        return 'character', obj, is_empty, extra
 
     if isinstance(obj, collections.Sequence):
-        return 'cell', obj, None
+        is_empty = len(obj) == 0
+        extra = None
+        return 'cell', obj, is_empty, extra
 
     if issparse(obj):
         if obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return None, None, None
+            return UNSUPPORTED
+        is_empty = np.prod(obj.shape) == 0
         extra = 'sparse'
         if np.issubdtype(obj.dtype, np.complexfloating):
             extra += '+complex'
-        return 'numeric', obj.tocoo(), extra
+        return 'numeric', obj.tocoo(), is_empty, extra
 
     if np.iscomplexobj(obj):
         if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return None, None, None
-        return 'numeric', obj, 'complex'
+            return UNSUPPORTED
+        if is_scalar:
+            is_empty = np.isnan(obj.real) and np.isnan(obj.complex)
+        else:
+            is_empty = np.isnan(obj.real).all() and np.isnan(obj.complex).all()
+        extra = 'complex'
+        return 'numeric', obj, is_empty, extra
 
     if isinstance(obj, collections.Mapping):
-        return 'structure', obj, None
+        is_empty = len(obj) == 0
+        extra = None
+        return 'structure', obj, is_empty, extra
 
     if hasattr(obj, 'read'):
-        return 'file', obj, None
+        is_empty = False
+        extra = None
+        return 'file', obj, is_empty, extra
 
     # numeric and logical scalars and arrays
+    extra = None
+    is_empty = np.asarray(obj).size == 0
     cast_obj = obj
     if is_scalar:
         check = isinstance
         if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return None, None, None
+            return UNSUPPORTED
     elif is_array:
         check = issubclass
         if cast_obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return None, None, None
+            return UNSUPPORTED
         obj = cast_obj.dtype.type
     else:
-        return None, None, None
+        return UNSUPPORTED
 
     if check(obj, (bool, np.bool_)):
-        return 'logical', cast_obj, None
+        return 'logical', cast_obj, is_empty, extra
 
     if check(obj, (int, np.long, float, np.number)):
-        return 'numeric', cast_obj, None
+        is_empty = is_empty or np.all(np.isnan(cast_obj))
+        return 'numeric', cast_obj, is_empty, extra
 
     if check(obj, (np.object_, np.unicode_, np.str_)):
-        return 'cell', cast_obj, None
+        return 'cell', cast_obj, is_empty, extra
 
-    return None, None, None
+    return UNSUPPORTED
 
 
 def is_simple(record_type):
