@@ -255,7 +255,7 @@ class SDAFile(object):
 
         sparse arrays (:class:`coo_matrix<scipy:scipy.sparse.coo_matrix>`) :
             These are stored as 'numeric' records if the dtype is a type
-            supported for numpy arrays.
+            supported for numeric numpy arrays.
 
         strings :
             Strings are stored as 'character' records. An attempt will be

@@ -430,6 +430,8 @@ def infer_record_type(obj):
     if issparse(obj):
         if obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
             return UNSUPPORTED
+        if not np.issubdtype(obj.dtype, np.number):
+            return UNSUPPORTED
         is_empty = np.prod(obj.shape) == 0
         extra = 'sparse'
         if np.issubdtype(obj.dtype, np.complexfloating):
