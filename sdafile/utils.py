@@ -418,7 +418,7 @@ def infer_record_type(obj):
         return 'character', obj, is_empty, extra
 
     if is_array and obj.dtype == np.dtype('S1'):
-        is_empty = len(obj) == 0
+        is_empty = obj.size == 0
         extra = None
         return 'character', obj, is_empty, extra
 
