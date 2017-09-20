@@ -82,6 +82,10 @@ for val, typ in TEST_SCALARS:
         TEST_ARRAYS.append((arr, typ))
         TEST_ARRAYS.append((np.array(arr).reshape(2, 2), typ))
 
+TEST_ARRAYS.append(
+    (np.array(list(STR_VAL), 'S1').reshape(-1, 1), 'character'),
+)
+
 
 # Sparse matrix in all forms
 TEST_SPARSE = [coo_matrix((np.arange(5), (np.arange(1, 6), np.arange(2, 7))))]

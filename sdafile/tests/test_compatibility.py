@@ -71,8 +71,8 @@ class TestSDAReference(unittest.TestCase):
     def test_example_C(self):
         """ Some text """
         label = 'example C'
-        expected = 'Here is some text'
-        self.assertScalar(label, expected)
+        expected = np.array(list('Here is some text'), 'S1').reshape(-1, 1)
+        self.assertArray(label, expected)
 
     def test_example_D(self):
         """ Handle to the sine function """

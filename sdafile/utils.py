@@ -54,8 +54,8 @@ EMPTY_FOR_TYPE = {
 }
 
 # Equivalent record types for reading
-STRUCTURE_EQUIVALENT = ('structure', 'object')
-CELL_EQUIVALENT = ('cell', 'objects', 'structures')
+STRUCTURE_EQUIVALENT = {'structure', 'object'}
+CELL_EQUIVALENT = {'cell', 'objects', 'structures'}
 
 
 def are_record_types_equivalent(rt1, rt2):
@@ -124,8 +124,8 @@ def coerce_character(data):
 
     Parameters
     ----------
-    data : str
-        Input string
+    data : str, unicode, or ndarray of '|S1'
+        Input string or array of characters
 
     Returns
     -------
@@ -133,7 +133,10 @@ def coerce_character(data):
         The string, encoded as ascii, and stored in a uint8 array
 
     """
-    data = np.frombuffer(data.encode('ascii'), np.uint8)
+    if isinstance(data, np.ndarray):
+        data = data.view(np.uint8)
+    else:
+        data = np.frombuffer(data.encode('ascii'), np.uint8)
     return np.atleast_2d(data)
 
 
@@ -373,7 +376,9 @@ def infer_record_type(obj):
     numpy arrays :
         If the dtype is a supported numeric type, then the 'numeric' record
         type is inferred. Arrays of 'bool' type are inferred to be 'logical'.
-        Arrays of 'object' and string type are inferred to be 'cell' arrays.
+        Arrays of characters (dtype 'S1') are inferred to be 'character' type.
+        Arrays of 'object' and multi-character string type are inferred to be
+        'cell' arrays.
 
     sparse arrays (from scipy.sparse) :
         These are inferred to be 'numeric' and 'sparse', if the dtype is a type
@@ -393,9 +398,6 @@ def infer_record_type(obj):
         File-like objects (with a 'read' method) are inferred to be 'file'
         records.
 
-    other :
-        Arrays of characters are not supported. Convert to a string.
-
     Anything not listed above is not supported.
 
     """
@@ -411,6 +413,11 @@ def infer_record_type(obj):
         is_array = isinstance(obj, np.ndarray)
 
     if isinstance(obj, (str, np.unicode)):  # Numpy string type is a str
+        is_empty = len(obj) == 0
+        extra = None
+        return 'character', obj, is_empty, extra
+
+    if is_array and obj.dtype == np.dtype('S1'):
         is_empty = len(obj) == 0
         extra = None
         return 'character', obj, is_empty, extra
