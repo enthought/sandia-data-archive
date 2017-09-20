@@ -249,11 +249,13 @@ class SDAFile(object):
         numpy arrays :
             If the dtype is a supported numeric type, then a numpy array is
             stored as a 'numeric' record. Arrays of 'bool' type are stored as
-            'logical' records. Object arrays are stored as 'cell' records.
+            'logical' records.  Arrays of characters (dtype 'S1') are stored as
+            'character' records. Object and string arrays are stored as 'cell'
+            records.
 
         sparse arrays (:class:`coo_matrix<scipy:scipy.sparse.coo_matrix>`) :
             These are stored as 'numeric' records if the dtype is a type
-            supported for numpy arrays.
+            supported for numeric numpy arrays.
 
         strings :
             Strings are stored as 'character' records. An attempt will be

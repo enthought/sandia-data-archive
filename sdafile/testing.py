@@ -5,7 +5,7 @@ import tempfile
 
 import h5py
 import numpy as np
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, eye
 
 import sdafile
 
@@ -82,6 +82,10 @@ for val, typ in TEST_SCALARS:
         TEST_ARRAYS.append((arr, typ))
         TEST_ARRAYS.append((np.array(arr).reshape(2, 2), typ))
 
+TEST_ARRAYS.append(
+    (np.array(list(STR_VAL), 'S1').reshape(-1, 1), 'character'),
+)
+
 
 # Sparse matrix in all forms
 TEST_SPARSE = [coo_matrix((np.arange(5), (np.arange(1, 6), np.arange(2, 7))))]
@@ -148,9 +152,11 @@ TEST_STRUCTURE = [
 
 # Unsupported
 TEST_UNSUPPORTED = [
+    eye(5, dtype=bool),  # sparse bool
     lambda x: x**2,
     {0},
     None,
+
 ]
 
 
@@ -158,12 +164,15 @@ TEST_UNSUPPORTED = [
 if hasattr(np, 'complex256'):
     TEST_UNSUPPORTED.append(np.complex256(0))
     TEST_UNSUPPORTED.append(np.arange(5, dtype=np.complex256))
+    TEST_UNSUPPORTED.append(eye(5, dtype=np.complex256))
 if hasattr(np, 'float128'):
     TEST_UNSUPPORTED.append(np.float128(0))
     TEST_UNSUPPORTED.append(np.arange(5, dtype=np.float128))
+    TEST_UNSUPPORTED.append(eye(5, dtype=np.float128))
 if hasattr(np, 'float16'):
     TEST_UNSUPPORTED.append(np.float16(0))
     TEST_UNSUPPORTED.append(np.arange(5, dtype=np.float16))
+    TEST_UNSUPPORTED.append(eye(5, dtype=np.float16))
 
 
 @contextmanager

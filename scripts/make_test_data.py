@@ -31,7 +31,8 @@ def make_example_data(filename):
 
     sda_file.insert("example B", True, "Logical scalar")
 
-    sda_file.insert("example C", "Here is some text", "Some text")
+    data = np.array(list('Here is some text'), 'S1').reshape(-1, 1)
+    sda_file.insert("example C", data, "Some text")
 
     desc = "Cell array combining examples A1 and A2"
     sda_file.insert("example E", [EXAMPLE_A1, EXAMPLE_A2], desc)

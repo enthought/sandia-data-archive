@@ -79,11 +79,16 @@ def extract_character(data):
 
     Returns
     -------
-    extracted : str
-        Reconstructed ascii string.
+    extracted : str or ndarray
+        Reconstructed ascii string. If the input is a row array, then it will
+        be converted to a string. Otherwise, it will be returned as an array of
+        'S1' dtype.
 
     """
-    data = data.tobytes().decode('ascii')
+    if data.ndim == 2 and data.shape[0] == 1:
+        data = data.tobytes().decode('ascii')
+    else:
+        data = data.view('S1')
     return data
 
 
