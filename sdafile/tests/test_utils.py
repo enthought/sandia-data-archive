@@ -5,7 +5,7 @@ import string
 import unittest
 
 import numpy as np
-from numpy.testing import assert_array_equal, assert_equal
+from numpy.testing import assert_array_equal
 from scipy.sparse import coo_matrix
 
 from sdafile.exceptions import BadSDAFile
@@ -19,12 +19,10 @@ from sdafile.utils import (
     are_record_types_equivalent, coerce_character, coerce_complex, coerce_file,
     coerce_logical, coerce_numeric, coerce_simple, coerce_sparse,
     coerce_sparse_complex, error_if_bad_attr, error_if_bad_header,
-    error_if_not_writable, extract_character, extract_complex, extract_file,
-    extract_logical, extract_numeric, extract_sparse, extract_sparse_complex,
-    get_date_str, get_decoded, get_empty_for_type, infer_record_type,
-    is_valid_date, is_valid_file_format, is_valid_format_version,
-    is_valid_matlab_field_label, is_valid_writable, set_encoded, unnest,
-    update_header, write_header
+    error_if_not_writable, get_date_str, get_decoded, get_empty_for_type,
+    infer_record_type, is_valid_date, is_valid_file_format,
+    is_valid_format_version, is_valid_matlab_field_label, is_valid_writable,
+    set_encoded, unnest, update_header, write_header
 )
 
 
@@ -193,84 +191,6 @@ class TestUtils(unittest.TestCase):
             with self.assertRaises(IOError):
                 error_if_not_writable(h5file)
 
-    def test_extract_character(self):
-        expected = string.printable
-        stored = np.array([ord(c) for c in expected], np.uint8)
-        extracted = extract_character(stored)
-        self.assertEqual(extracted, expected)
-
-    def test_extract_complex(self):
-
-        expected = np.arange(6, dtype=np.complex128)
-        expected.imag = -1
-
-        stored = coerce_complex(expected)
-        extracted = extract_complex(stored, (6,))
-        self.assertEqual(expected.dtype, extracted.dtype)
-        assert_array_equal(expected, extracted)
-
-        expected = expected.astype(np.complex64)
-        stored = stored.astype(np.float32)
-        extracted = extract_complex(stored, (6,))
-        self.assertEqual(expected.dtype, extracted.dtype)
-        assert_array_equal(expected, extracted)
-
-        expected_2d = expected.reshape((2, 3), order='F')
-        extracted = extract_complex(stored, (2, 3))
-        self.assertEqual(expected_2d.dtype, extracted.dtype)
-        assert_array_equal(expected_2d, extracted)
-
-    def test_extract_file(self):
-        contents = b'0123456789ABCDEF'
-        buf = io.BytesIO(contents)
-        stored = coerce_file(buf)
-        extracted = extract_file(stored)
-        self.assertEqual(extracted, contents)
-
-    def test_extract_logical(self):
-        self.assertEqual(extract_logical(1), True)
-        self.assertEqual(extract_logical(0), False)
-
-        expected = np.array([True, False, True, True], dtype=bool)
-        stored = np.array([[1, 0, 1, 1]], dtype=np.uint8)
-        extracted = extract_logical(stored)
-        self.assertEqual(extracted.dtype, expected.dtype)
-        assert_array_equal(extracted, expected)
-
-    def test_extract_numeric(self):
-        for data, typ in TEST_SCALARS + TEST_ARRAYS:
-            if typ == 'numeric':
-                assert_equal(extract_numeric(coerce_numeric(data)), data)
-
-    def test_extract_sparse(self):
-        row = np.array([0, 2])
-        col = np.array([1, 2])
-        data = np.array([1, 4])
-
-        stored = np.array([row + 1, col + 1, data])  # one-based indexing
-        extracted = extract_sparse(stored)
-        expected = np.array([
-            [0, 1, 0],
-            [0, 0, 0],
-            [0, 0, 4],
-        ])
-
-        self.assertIsInstance(extracted, coo_matrix)
-        assert_array_equal(extracted.toarray(), expected)
-
-    def test_extract_sparse_complex(self):
-        row = np.array([3, 4, 5, 6])
-        col = np.array([0, 1, 1, 4])
-        data = row + (1 + 1j) * col
-
-        idx = 5 * row + col + 1
-        stored = np.array([idx, data.real, data.imag])
-        extracted = extract_sparse_complex(stored, (7, 5))
-
-        expected = np.zeros((7, 5), dtype=np.complex128)
-        expected[row, col] = data
-        assert_array_equal(extracted.toarray(), expected)
-
     def test_get_date_str(self):
         dt = datetime.datetime(2017, 8, 18, 2, 22, 11)
         date_str = get_date_str(dt)
@@ -379,9 +299,10 @@ class TestUtils(unittest.TestCase):
         # scalars
         for obj, typ in TEST_SCALARS:
             msg = 'record type of {!r} != {}'.format(obj, typ)
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, typ, msg=msg)
             self.assertEqual(cast_obj, obj)
+            self.assertFalse(is_empty)
             if np.iscomplexobj(obj):
                 self.assertEqual(extra, 'complex')
             else:
@@ -390,8 +311,9 @@ class TestUtils(unittest.TestCase):
         # arrays
         for obj, typ in TEST_ARRAYS:
             msg = 'record type of {!r} != {}'.format(obj, typ)
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, typ, msg=msg)
+            self.assertFalse(is_empty)
             assert_array_equal(cast_obj, np.asarray(obj))
             if np.iscomplexobj(obj):
                 self.assertEqual(extra, 'complex')
@@ -401,8 +323,9 @@ class TestUtils(unittest.TestCase):
         # sparse
         coo = TEST_SPARSE[0]
         for obj in TEST_SPARSE:
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, 'numeric')
+            self.assertFalse(is_empty)
             self.assertEqual(extra, 'sparse')
             self.assertIsInstance(cast_obj, coo_matrix)
             assert_array_equal(cast_obj.toarray(), coo.toarray())
@@ -410,37 +333,82 @@ class TestUtils(unittest.TestCase):
         # sparse+complex
         coo = TEST_SPARSE_COMPLEX[0]
         for obj in TEST_SPARSE_COMPLEX:
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, 'numeric')
+            self.assertFalse(is_empty)
             self.assertEqual(extra, 'sparse+complex')
             self.assertIsInstance(cast_obj, coo_matrix)
             assert_array_equal(cast_obj.toarray(), coo.toarray())
 
         # lists, tuples
         for obj in TEST_CELL:
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, 'cell')
+            self.assertFalse(is_empty)
             self.assertIsNone(extra)
             self.assertIs(cast_obj, obj)
 
         # dicts
         for obj in TEST_STRUCTURE:
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
             self.assertEqual(record_type, 'structure')
+            self.assertFalse(is_empty)
             self.assertIsNone(extra)
             self.assertIs(cast_obj, obj)
 
         # file
         with temporary_file() as filename:
             with open(filename, 'w') as f:
-                record_type, cast_obj, extra = infer_record_type(f)
+                record_type, cast_obj, is_empty, extra = infer_record_type(f)
             self.assertEqual(record_type, 'file')
+            self.assertFalse(is_empty)
             self.assertIsNone(extra)
             self.assertIs(cast_obj, f)
+
+        # empty
+        record_type, _, is_empty, _ = infer_record_type('')
+        self.assertEqual(record_type, 'character')
+        self.assertTrue(is_empty)
+
+        record_type, _, is_empty, _ = infer_record_type([])
+        self.assertEqual(record_type, 'cell')
+        self.assertTrue(is_empty)
+
+        record_type, _, is_empty, _ = infer_record_type({})
+        self.assertEqual(record_type, 'structure')
+        self.assertTrue(is_empty)
+
+        record_type, _, is_empty, _ = infer_record_type(coo_matrix([]))
+        self.assertEqual(record_type, 'numeric')
+        self.assertTrue(is_empty)
+
+        record_type, _, is_empty, _ = infer_record_type(np.nan)
+        self.assertEqual(record_type, 'numeric')
+        self.assertTrue(is_empty)
+
+        data = np.array([])
+        record_type, _, is_empty, _ = infer_record_type(data)
+        self.assertEqual(record_type, 'numeric')
+        self.assertTrue(is_empty)
+
+        data = np.array([np.nan, np.nan])
+        record_type, _, is_empty, _ = infer_record_type(data)
+        self.assertEqual(record_type, 'numeric')
+        self.assertTrue(is_empty)
+
+        data = np.array([], dtype=bool)
+        record_type, _, is_empty, _ = infer_record_type(data)
+        self.assertEqual(record_type, 'logical')
+        self.assertTrue(is_empty)
+
+        data = np.array([], dtype=object)
+        record_type, _, is_empty, _ = infer_record_type(data)
+        self.assertEqual(record_type, 'cell')
+        self.assertTrue(is_empty)
 
         # Unsupported
         for obj in TEST_UNSUPPORTED:
             msg = 'record type of {!r} is not None'.format(obj)
-            record_type, cast_obj, extra = infer_record_type(obj)
+            record_type, cast_obj, _, extra = infer_record_type(obj)
             self.assertIsNone(record_type, msg=msg)
             self.assertIsNone(cast_obj)

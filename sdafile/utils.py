@@ -13,7 +13,7 @@ import string
 import time
 
 import numpy as np
-from scipy.sparse import coo_matrix, issparse
+from scipy.sparse import issparse
 
 from .exceptions import BadSDAFile
 
@@ -302,188 +302,6 @@ def error_if_not_writable(h5file):
         raise IOError(msg)
 
 
-def extract_simple(record_type, data, data_attrs):
-    """ Extract simple data from its raw storage format.
-
-    Parameters
-    -----------
-    data : ndarray
-        Data extracted from hdf5 dataset storage
-    record_type : str
-        The simple data type
-    data_attrs : dict
-        Attributes associated with the stored dataset
-
-    Returns
-    -------
-    extracted :
-        The extracted simple data
-
-    """
-    complex_flag = data_attrs.get('Complex', 'no')
-    sparse_flag = data_attrs.get('Sparse', 'no')
-    shape = data_attrs.get('ArraySize', None)
-
-    if record_type == 'numeric':
-        if sparse_flag == 'yes':
-            if complex_flag == 'yes':
-                extracted = extract_sparse_complex(data, shape.astype(int))
-            else:
-                extracted = extract_sparse(data)
-        elif complex_flag == 'yes':
-            extracted = extract_complex(data, shape.astype(int))
-        else:
-            extracted = extract_numeric(data)
-    elif record_type == 'logical':
-        extracted = extract_logical(data)
-    elif record_type == 'character':
-        extracted = extract_character(data)
-    elif record_type == 'file':
-        extracted = extract_file(data)
-
-    return extracted
-
-
-def extract_character(data):
-    """ Extract 'character' data from uint8 stored form.
-
-    Parameters
-    -----------
-    data : ndarray
-        Array of uint8 ascii encodings
-
-    Returns
-    -------
-    extracted : str
-        Reconstructed ascii string.
-
-    """
-    data = data.tobytes().decode('ascii')
-    return data
-
-
-def extract_complex(data, shape):
-    """ Extract complex 'numeric' data.
-
-    Parameters
-    -----------
-    data : ndarray
-        2 x N array containing real and imaginary portions of the complex data.
-    shape : tuple
-        Shape of the extracted array.
-
-    Returns
-    -------
-    extracted : ndarray
-        The extracted complex array.
-
-    """
-    extracted = 1j * data[1]
-    extracted.real = data[0]
-    extracted = extracted.reshape(shape, order='F')
-    return reduce_array(extracted)
-
-
-def extract_file(data):
-    """ Extract file data.
-
-    Parameters
-    -----------
-    data : ndarray
-        The file contents as a byte array.
-
-    Returns
-    -------
-    extracted : bytes
-        The data is left alone.
-
-    """
-    return data.tobytes()
-
-
-def extract_logical(data):
-    """ Extract 'logical' data from uint8 stored form.
-
-    Parameters
-    -----------
-    data : ndarray
-        Array of uint8 values clipped to 0 or 1
-
-    Returns
-    -------
-    extracted :
-        The extracted boolean or boolean array
-
-    """
-    data = np.asarray(data, dtype=bool)
-    return reduce_array(data)
-
-
-def extract_numeric(data):
-    """ Extract 'numeric' data from stored form.
-
-    Parameters
-    -----------
-    data : ndarray or scalar
-        Array or scalar of numeric data
-
-    Returns
-    -------
-    data : ndarray or scalar
-        The input data
-
-    """
-    return reduce_array(data)
-
-
-def extract_sparse(data):
-    """ Extract sparse 'numeric' data from stored form.
-
-    Parameters
-    -----------
-    data : 3xN ndarray
-        3xN array containing the rows, columns, and values of a sparse matrix
-        in COO form. Note that the row and column arrays must be 1-based to be
-        compatible with MATLAB.
-
-    Returns
-    -------
-    extracted : scipy.sparse.coo_matrix
-        The extracted sparse matrix
-
-    """
-    row, col, data = data
-    # Fix 1-based indexing
-    row -= 1
-    col -= 1
-    return coo_matrix((data, (row, col)))
-
-
-def extract_sparse_complex(data, shape):
-    """ Extract sparse 'numeric' data from stored form.
-
-    Parameters
-    -----------
-    data : ndarray
-        3xN array containing the index, real, and imaginary values of a
-        sparse complex data. The index is unraveled and 1-based.
-    shape : tuple
-        Shape of the extracted array
-
-    Returns
-    -------
-    extracted : coo_matrix
-        The extracted sparse, complex matrix
-
-    """
-    index = data[0].astype(np.int64)
-    # Fix 1-based indexing
-    index -= 1
-    data = extract_complex(data[1:], (data.shape[1],))
-    row, col = np.unravel_index(index, shape)
-    return coo_matrix((data, (row, col)))
-
-
 def get_date_str(dt=None):
     """ Get a valid date string from a datetime, or current time. """
     if dt is None:
@@ -528,6 +346,8 @@ def infer_record_type(obj):
     cast_obj :
         The object if scalar, the object cast as a numpy array if not, or None
         the type is unsupported.
+    is_empty : bool
+        Flag indicating whether the data is empty.
     extra :
         Extra information about the type. This may be None, 'sparse',
         'complex', or 'sparse+complex' for 'numeric' types, and will be None in
@@ -580,6 +400,8 @@ def infer_record_type(obj):
 
     """
 
+    UNSUPPORTED = None, None, None, None
+
     # Unwrap scalar arrays to simplify the following
     is_scalar = np.isscalar(obj)
     is_array = isinstance(obj, np.ndarray)
@@ -589,54 +411,71 @@ def infer_record_type(obj):
         is_array = isinstance(obj, np.ndarray)
 
     if isinstance(obj, (str, np.unicode)):  # Numpy string type is a str
-        return 'character', obj, None
+        is_empty = len(obj) == 0
+        extra = None
+        return 'character', obj, is_empty, extra
 
     if isinstance(obj, collections.Sequence):
-        return 'cell', obj, None
+        is_empty = len(obj) == 0
+        extra = None
+        return 'cell', obj, is_empty, extra
 
     if issparse(obj):
         if obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return None, None, None
+            return UNSUPPORTED
+        is_empty = np.prod(obj.shape) == 0
         extra = 'sparse'
         if np.issubdtype(obj.dtype, np.complexfloating):
             extra += '+complex'
-        return 'numeric', obj.tocoo(), extra
+        return 'numeric', obj.tocoo(), is_empty, extra
 
     if np.iscomplexobj(obj):
         if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return None, None, None
-        return 'numeric', obj, 'complex'
+            return UNSUPPORTED
+        if is_scalar:
+            is_empty = np.isnan(obj.real) and np.isnan(obj.complex)
+        else:
+            is_empty = np.isnan(obj.real).all() and np.isnan(obj.complex).all()
+        extra = 'complex'
+        return 'numeric', obj, is_empty, extra
 
     if isinstance(obj, collections.Mapping):
-        return 'structure', obj, None
+        is_empty = len(obj) == 0
+        extra = None
+        return 'structure', obj, is_empty, extra
 
     if hasattr(obj, 'read'):
-        return 'file', obj, None
+        is_empty = False
+        extra = None
+        return 'file', obj, is_empty, extra
 
     # numeric and logical scalars and arrays
+    extra = None
+    is_empty = np.asarray(obj).size == 0
     cast_obj = obj
     if is_scalar:
         check = isinstance
         if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return None, None, None
+            return UNSUPPORTED
     elif is_array:
         check = issubclass
         if cast_obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return None, None, None
+            return UNSUPPORTED
         obj = cast_obj.dtype.type
     else:
-        return None, None, None
+        return UNSUPPORTED
 
     if check(obj, (bool, np.bool_)):
-        return 'logical', cast_obj, None
+        return 'logical', cast_obj, is_empty, extra
 
     if check(obj, (int, np.long, float, np.number)):
-        return 'numeric', cast_obj, None
+        is_empty = is_empty or np.all(np.isnan(cast_obj))
+        return 'numeric', cast_obj, is_empty, extra
 
     if check(obj, (np.object_, np.unicode_, np.str_)):
-        return 'cell', cast_obj, None
+        return 'cell', cast_obj, is_empty, extra
 
-    return None, None, None
+    return UNSUPPORTED
 
 
 def is_simple(record_type):
@@ -713,18 +552,6 @@ def get_decoded(dict_like, *attrs):
         attr: value.decode('ascii') if isinstance(value, bytes) else value
         for attr, value in items
     }
-
-
-def reduce_array(arr):
-    """ Reduce a 2d row-array or scalar to 1 or 0 dimensions, respectively. """
-    # squeeze leading dimension if this is a MATLAB row array
-    if arr.ndim == 2 and arr.shape[0] == 1:
-        # if it's a scalar, go all the way
-        if arr.shape[1] == 1:
-            arr = arr[0, 0]
-        else:
-            arr = np.squeeze(arr, axis=0)
-    return arr
 
 
 def unnest(data):

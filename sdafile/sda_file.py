@@ -18,11 +18,12 @@ import tempfile
 import h5py
 import numpy as np
 
+from .extract import extract
+from .inserter import Inserter
 from .utils import (
-    are_record_types_equivalent, coerce_simple, error_if_bad_header,
-    error_if_not_writable, extract_simple, get_decoded, get_empty_for_type,
-    infer_record_type, is_simple, is_supported, is_valid_matlab_field_label,
-    is_valid_writable, set_encoded, unnest, update_header, write_header,
+    are_record_types_equivalent, error_if_bad_header, error_if_not_writable,
+    get_decoded, infer_record_type, is_valid_writable, set_encoded, unnest,
+    update_header, write_header,
 )
 
 
@@ -177,9 +178,7 @@ class SDAFile(object):
         """
         self._validate_labels(label, must_exist=True)
         with self._h5file('r') as h5file:
-            grp = h5file[label]
-            attrs = get_decoded(grp.attrs)
-            return self._extract_data_from_group(grp, label, attrs)
+            return extract(h5file, label)
 
     def extract_to_file(self, label, path, overwrite=False):
         """ Extract a file record to file.
@@ -205,12 +204,9 @@ class SDAFile(object):
         self._validate_labels(label, must_exist=True)
 
         # Check that archive is a file archive
-        with self._h5file('r') as h5file:
-            # Check the general structure of the data and file
-            grp = h5file[label]
-            attrs = get_decoded(grp.attrs, 'RecordType')
-            if not attrs['RecordType'] == 'file':
-                raise ValueError("'{}' is not a file record".format(label))
+        record_type = self._get_attr('RecordType', root=label)
+        if record_type != 'file':
+            raise ValueError("'{}' is not a file record".format(label))
 
         with open(path, 'wb') as f:
             f.write(self.extract(label))
@@ -290,35 +286,13 @@ class SDAFile(object):
         if not isinstance(deflate, (int, np.integer)) or not 0 <= deflate <= 9:
             msg = "'deflate' must be an integer from 0 to 9"
             raise ValueError(msg)
-        record_type, cast_obj, extra = infer_record_type(data)
-        if record_type is None:
+        inserter = Inserter(label, data, deflate)
+        if inserter.record_type is None:
             msg = "{!r} is not a supported type".format(data)
-            raise ValueError(data)
+            raise ValueError(msg)
 
         with self._h5file('r+') as h5file:
-            grp = h5file.create_group(label)
-            # Write the known header information
-            set_encoded(
-                grp.attrs,
-                RecordType=record_type,
-                Deflate=deflate,
-                Description=description,
-            )
-
-            if is_simple(record_type):
-                self._insert_simple_data(
-                    grp, label, deflate, record_type, cast_obj, extra
-                )
-            else:
-                try:
-                    self._insert_composite_data(
-                        grp, deflate, record_type, cast_obj, extra
-                    )
-                except ValueError:
-                    # If something goes wrong, don't leave the archive in an
-                    # inconsistent state
-                    del h5file[label]
-                    raise
+            inserter.insert(h5file, description)
 
     def insert_from_file(self, path, description='', deflate=0):
         """ Insert the contents of a file as a file record.
@@ -338,7 +312,6 @@ class SDAFile(object):
         -------
         label : str
             The label under which the file was stored.
-
 
         See Also
         --------
@@ -372,10 +345,6 @@ class SDAFile(object):
 
         """
         self._validate_can_write()
-        if len(labels) == 0:
-            msg = "Specify labels to remove"
-            raise ValueError(msg)
-
         self._validate_labels(labels, must_exist=True)
 
         # Create a new file so space is actually freed
@@ -510,7 +479,7 @@ class SDAFile(object):
         self._validate_can_write()
         self._validate_labels(label, must_exist=True)
 
-        record_type, _, _ = infer_record_type(data)
+        record_type, _, _, _ = infer_record_type(data)
         if record_type != 'structure':
             raise ValueError("Input data is not a mapping")
 
@@ -522,7 +491,7 @@ class SDAFile(object):
             for part in parts:
                 data = data[part]
 
-            record_type, _, _ = infer_record_type(data)
+            record_type, _, _, _ = infer_record_type(data)
             attrs = get_decoded(grp[path].attrs)
             equivalent = are_record_types_equivalent(
                 record_type,
@@ -557,16 +526,15 @@ class SDAFile(object):
         self.remove(label)
         self.insert(label, data, attrs['Description'], int(attrs['Deflate']))
 
-        # Fix the record type
+        # Fix the record type and updat the header
         with self._h5file('r+') as h5file:
-            # Check the general structure of the data and file
             grp = h5file[label]
             set_encoded(
                 grp.attrs,
                 RecordType='object',
                 Class=attrs['Class'],
             )
-            update_header(grp.attrs)
+            update_header(h5file.attrs)
 
     # Private
 
@@ -578,137 +546,14 @@ class SDAFile(object):
         finally:
             h5file.close()
 
-    def _extract_data_from_group(self, grp, label, attrs):
-        """ Extract data from h5 group. ``label`` is the group label. """
-
-        record_type = attrs['RecordType']
-        if not is_supported(record_type):
-            msg = "RecordType '{}' is not supported".format(record_type)
-            raise ValueError(msg)
-
-        empty = attrs['Empty']
-        if empty == 'yes':
-            return get_empty_for_type(record_type)
-
-        if is_simple(record_type):
-            ds = grp[label]
-            data_attrs = get_decoded(ds.attrs)
-            return extract_simple(record_type, ds[()], data_attrs)
-
-        if record_type in ('cell', 'structures', 'objects'):
-            record_size = attrs['RecordSize'].astype(int)
-            nr = np.prod(record_size)
-            labels = ['element {}'.format(i) for i in range(1, nr + 1)]
-            data = self._extract_composite_data(grp, labels)
-            if record_size[0] > 1 or len(record_size) > 2:
-                data = np.array(
-                    data, dtype=object,
-                ).reshape(record_size, order='F')
-        elif record_type in ('structure', 'object'):
-            labels = attrs['FieldNames'].split()
-            data = self._extract_composite_data(grp, labels)
-            data = dict(zip(labels, data))
-        return data
-
-    def _extract_composite_data(self, grp, labels):
-        """ Extract composite data from a Group object with given labels. """
-        extracted = []
-        for label in labels:
-            sub_obj = grp[label]
-            attrs = get_decoded(sub_obj.attrs)
-            record_type = attrs['RecordType']
-            if is_simple(record_type):
-                element = extract_simple(record_type, sub_obj[()], attrs)
-            else:  # composite type
-                element = self._extract_data_from_group(sub_obj, label, attrs)
-            extracted.append(element)
-        return extracted
-
-    def _insert_composite_data(self, grp, deflate, record_type, data, extra):
-        attrs = {}
-        if record_type == 'cell':
-            if isinstance(data, np.ndarray):
-                record_size = np.atleast_2d(data).shape
-                data = data.ravel(order='F')
-            else:
-                record_size = (1, len(data))
-            nr = np.prod(record_size)
-            labels = ['element {}'.format(i) for i in range(1, nr + 1)]
-            attrs['RecordSize'] = record_size
-        elif record_type == 'structure':
-            nr = len(data)
-            data = sorted((str(key), value) for key, value in data.items())
-            labels, data = zip(*data)
-            # Check that each label is a valid MATLAB field label
-            for label in labels:
-                if not is_valid_matlab_field_label(label):
-                    msg = "Key '{}' is not a valid MATLAB field label"
-                    raise ValueError(msg.format(label))
-            attrs['FieldNames'] = ' '.join(labels)
-        else:
-            raise ValueError(record_type)
-
-        attrs['Empty'] = 'yes' if nr == 0 else 'no'
-
-        for label, sub_data in zip(labels, data):
-            sub_rec_type, sub_data, sub_extra = infer_record_type(sub_data)
-            if is_simple(sub_rec_type):
-                self._insert_simple_data(
-                    grp, label, deflate, sub_rec_type, sub_data,
-                    sub_extra
-                )
-            else:
-                sub_grp = grp.create_group(label)
-                set_encoded(
-                    sub_grp.attrs,
-                    RecordType=sub_rec_type
-                )
-                self._insert_composite_data(
-                    sub_grp, deflate, sub_rec_type, sub_data, sub_extra
-                )
-
-        # Do this last because primitive sub-records can modify the Empty
-        # attribute.
-        set_encoded(grp.attrs, **attrs)
-
-    def _insert_simple_data(self, grp, label, deflate, record_type, data,
-                            extra):
-        """ Prepare primitive data for storage and store it. """
-        data, original_shape = coerce_simple(record_type, data, extra)
-        empty = 'yes' if (np.isnan(data).all() or data.size == 0) else 'no'
-        compression = deflate
-        maxshape = (None,) * data.ndim
-
-        with self._h5file('r+') as h5file:
-            set_encoded(
-                grp.attrs,
-                Empty=empty,
-            )
-
-            ds = grp.create_dataset(
-                label,
-                maxshape=maxshape,
-                data=data,
-                compression=compression,
-            )
-            data_attrs = {}
-            is_numeric = record_type == 'numeric'
-            is_complex = extra is not None and extra.endswith('complex')
-            is_sparse = extra is not None and extra.startswith('sparse')
-            data_attrs['RecordType'] = record_type
-            data_attrs['Empty'] = empty
-            if is_numeric:
-                data_attrs['Complex'] = 'yes' if is_complex else 'no'
-                data_attrs['Sparse'] = 'yes' if is_sparse else 'no'
-            if is_complex:
-                data_attrs['ArraySize'] = original_shape
-            set_encoded(ds.attrs, **data_attrs)
-            update_header(h5file.attrs)
-
-    def _get_attr(self, attr):
+    def _get_attr(self, attr, root=None):
         """ Get a named atribute as a string """
         with self._h5file('r') as h5file:
-            return get_decoded(h5file.attrs, attr)[attr]
+            if root is None:
+                obj = h5file
+            else:
+                obj = h5file[root]
+            return get_decoded(obj.attrs, attr)[attr]
 
     def _validate_can_write(self):
         """ Validate file mode and 'Writable' attr allow writing. """
@@ -720,6 +565,8 @@ class SDAFile(object):
     def _validate_labels(self, labels, can_exist=True, must_exist=False):
         if isinstance(labels, str):
             labels = [labels]
+        if len(labels) == 0:
+            raise ValueError("Must specify labels")
         for label in labels:
             if '/' in label or '\\' in label:
                 msg = r"label cannot contain '/' or '\'"
