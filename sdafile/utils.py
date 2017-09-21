@@ -137,7 +137,9 @@ def coerce_character(data):
         data = data.view(np.uint8)
     else:
         data = np.frombuffer(data.encode('ascii'), np.uint8)
-    return np.atleast_2d(data)
+
+    # Matlab stores the transpose of 2D arrays. This must be applied here.
+    return np.atleast_2d(data).T
 
 
 def coerce_complex(data):
@@ -214,7 +216,8 @@ def coerce_numeric(data):
         The data with at least 2 dimensions
 
     """
-    return np.atleast_2d(data)
+    # Matlab stores the transpose of 2D arrays. This must be unapplied here.
+    return np.atleast_2d(data).T
 
 
 def coerce_sparse(data):

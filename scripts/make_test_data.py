@@ -6,7 +6,7 @@ from scipy import sparse
 from sdafile import SDAFile
 
 
-EXAMPLE_A1 = np.zeros(5, dtype=np.float64)
+EXAMPLE_A1 = np.zeros((5, 1), dtype=np.float64)
 
 EXAMPLE_A2 = np.empty((4, 3), dtype=np.complex128)
 EXAMPLE_A2.real = 0
@@ -15,6 +15,10 @@ EXAMPLE_A2.imag = 1
 EXAMPLE_A3 = sparse.eye(5).tocoo()
 
 EXAMPLE_A4 = np.nan
+
+EXAMPLE_B = True
+
+EXAMPLE_C = 'Here is some text'
 
 
 def make_example_data(filename):
@@ -27,12 +31,11 @@ def make_example_data(filename):
 
     sda_file.insert("example A3", EXAMPLE_A3, "5x5 sparse matrix")
 
-    sda_file.insert("example A4", np.nan, "Empty array")
+    sda_file.insert("example A4", EXAMPLE_A4, "Empty array")
 
-    sda_file.insert("example B", True, "Logical scalar")
+    sda_file.insert("example B", EXAMPLE_B, "Logical scalar")
 
-    data = np.array(list('Here is some text'), 'S1').reshape(-1, 1)
-    sda_file.insert("example C", data, "Some text")
+    sda_file.insert("example C", EXAMPLE_C, "Some text")
 
     desc = "Cell array combining examples A1 and A2"
     sda_file.insert("example E", [EXAMPLE_A1, EXAMPLE_A2], desc)
