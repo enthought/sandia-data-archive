@@ -3,8 +3,8 @@
 import numpy as np
 
 from .utils import (
-    coerce_simple, infer_record_type, is_simple, is_valid_matlab_field_label,
-    set_encoded, update_header,
+    cell_label, coerce_simple, infer_record_type, is_simple,
+    is_valid_matlab_field_label, set_encoded, update_header,
 )
 
 
@@ -88,7 +88,7 @@ class Inserter(object):
             else:
                 record_size = (1, len(data))
             nr = np.prod(record_size)
-            labels = ['element {}'.format(i) for i in range(1, nr + 1)]
+            labels = [cell_label(i) for i in range(1, nr + 1)]
             group_attrs['RecordSize'] = record_size
         elif self.record_type == 'structure':
             nr = len(data)
