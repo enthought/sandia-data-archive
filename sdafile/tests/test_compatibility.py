@@ -8,7 +8,7 @@ from sdafile.sda_file import SDAFile
 from sdafile.testing import data_path
 
 
-EXAMPLE_A1 = np.zeros(5, dtype=np.float64)
+EXAMPLE_A1 = np.zeros((5, 1), dtype=np.float64)
 
 EXAMPLE_A2 = np.empty((4, 3), dtype=np.complex128)
 EXAMPLE_A2.real = 0
@@ -71,8 +71,8 @@ class TestSDAReference(unittest.TestCase):
     def test_example_C(self):
         """ Some text """
         label = 'example C'
-        expected = np.array(list('Here is some text'), 'S1').reshape(-1, 1)
-        self.assertArray(label, expected)
+        expected = 'Here is some text'
+        self.assertScalar(label, expected)
 
     def test_example_D(self):
         """ Handle to the sine function """

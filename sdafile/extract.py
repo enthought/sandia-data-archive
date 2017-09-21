@@ -85,6 +85,8 @@ def extract_character(data):
         'S1' dtype.
 
     """
+    # Matlab stores the transpose of 2D arrays. This must be unapplied here.
+    data = data.T
     if data.ndim == 2 and data.shape[0] == 1:
         data = data.tobytes().decode('ascii')
     else:
@@ -163,7 +165,8 @@ def extract_numeric(data):
         The input data
 
     """
-    return reduce_array(data)
+    # Matlab stores the transpose of 2D arrays. This must be unapplied here.
+    return reduce_array(data.T)
 
 
 def extract_sparse(data):
