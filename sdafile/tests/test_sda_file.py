@@ -17,9 +17,10 @@ from sdafile.testing import (
     temporary_file, temporary_h5file
 )
 from sdafile.utils import (
-    coerce_character, coerce_complex, coerce_file, coerce_logical,
-    coerce_numeric, coerce_simple, coerce_sparse, coerce_sparse_complex,
-    get_decoded, infer_record_type, is_simple, set_encoded, write_header
+    are_record_types_equivalent, coerce_character, coerce_complex, coerce_file,
+    coerce_logical, coerce_numeric, coerce_simple, coerce_sparse,
+    coerce_sparse_complex, get_decoded, infer_record_type, is_simple,
+    set_encoded, write_header
 )
 
 
@@ -379,6 +380,53 @@ class TestSDAFileInsert(unittest.TestCase):
                     RecordSize=record_size,
                 )
 
+    def test_structures(self):
+        structure = {
+            'foo': 'foo',
+            'bar': np.arange(4),
+            'baz': np.array([True, False])
+        }
+
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            # Store homogeneous structures
+            label = 'test'
+            deflate = 0
+            objs = [structure] * 5
+            sda_file.insert(label, objs, label, deflate, as_structures=True)
+            self.assertCompositeRecord(
+                sda_file,
+                label,
+                objs,
+                Deflate=deflate,
+                RecordType='structures',
+                Empty='no',
+                RecordSize=(1, 5),
+            )
+
+            # Other record types should fail
+            failures = [data for (data, _) in TEST_SCALARS + TEST_ARRAYS]
+            failures += TEST_STRUCTURE + TEST_SPARSE + TEST_SPARSE_COMPLEX
+            for data in failures:
+                with self.assertRaises(ValueError):
+                    sda_file.insert('bad', data, 'bad', 0, as_structures=True)
+
+            # Inhomogenous records should fail
+            data = [structure, structure.copy()]
+            data[0]['baz'] = 10  # change record type
+            with self.assertRaises(ValueError):
+                sda_file.insert('bad', data, 'bad', 0, as_structures=True)
+
+            del data[0]['baz']
+            with self.assertRaises(ValueError):
+                sda_file.insert('bad', data, 'bad', 0, as_structures=True)
+
+            # Cell of non-structures should fail
+            data = [True]
+            with self.assertRaises(ValueError):
+                sda_file.insert('bad', data, 'bad', 0, as_structures=True)
+
     def test_file(self):
 
         with temporary_file() as file_path:
@@ -503,13 +551,16 @@ class TestSDAFileInsert(unittest.TestCase):
 
         # Check the data
         record_type = attrs['RecordType']
-        if record_type == 'cell':
+        if are_record_types_equivalent(record_type, 'cell'):
             expected = np.asarray(expected, dtype='object').ravel(order='F')
             labels = [
                 'element {}'.format(i) for i in range(1, len(expected) + 1)
             ]
-        else:
+        elif are_record_types_equivalent(record_type, 'structure'):
             labels, expected = zip(*expected.items())
+        else:
+            msg = "Unrecognized record type {}".format(record_type)
+            self.fail(msg)
 
         for label, obj in zip(labels, expected):
             sub_record_type, data, _, extra = infer_record_type(obj)
@@ -517,7 +568,7 @@ class TestSDAFileInsert(unittest.TestCase):
                 data, _ = coerce_simple(sub_record_type, data, extra)
                 data_set = group[label]
                 self.assertDataSet(data_set, data)
-            elif sub_record_type == 'cell':
+            elif are_record_types_equivalent(sub_record_type, 'cell'):
                 if isinstance(obj, np.ndarray):
                     record_size = np.atleast_2d(obj).shape
                 else:
@@ -529,7 +580,7 @@ class TestSDAFileInsert(unittest.TestCase):
                     RecordType=sub_record_type,
                     RecordSize=record_size,
                 )
-            elif sub_record_type == 'structure':
+            elif are_record_types_equivalent(sub_record_type, 'structure'):
                 sub_group = group[label]
                 field_names = ' '.join(sorted(obj.keys()))
                 self.assertCompositeGroup(
@@ -538,6 +589,9 @@ class TestSDAFileInsert(unittest.TestCase):
                     RecordType=sub_record_type,
                     FieldNames=field_names,
                 )
+            else:
+                msg = "Unrecognized record type {}".format(sub_record_type)
+                self.fail(msg)
 
 
 class TestSDAFileExtract(unittest.TestCase):
@@ -862,7 +916,6 @@ class TestSDAFileMisc(unittest.TestCase):
 class TestSDAFileReplaceUpdate(unittest.TestCase):
 
     def test_replace(self):
-
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
             sda_file.insert('test', TEST_ARRAYS[0][0], 'test_description', 1)
@@ -889,13 +942,12 @@ class TestSDAFileReplaceUpdate(unittest.TestCase):
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
     def test_replace_non_object(self):
-
         reference_path = data_path('SDAreference.sda')
         with temporary_file() as file_path:
             # Copy the reference, which as an object in it.
             shutil.copy(reference_path, file_path)
             sda_file = SDAFile(file_path, 'a')
-            label = 'example A'
+            label = 'example A1'
             data = sda_file.extract('example I')
             with self.assertRaises(ValueError):
                 sda_file.update_object(label, data)

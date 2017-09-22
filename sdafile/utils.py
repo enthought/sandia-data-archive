@@ -58,6 +58,11 @@ STRUCTURE_EQUIVALENT = {'structure', 'object'}
 CELL_EQUIVALENT = {'cell', 'objects', 'structures'}
 
 
+# Cell label template and generator function
+CELL_LABEL_TEMPLATE = "element {}"
+cell_label = CELL_LABEL_TEMPLATE.format
+
+
 def are_record_types_equivalent(rt1, rt2):
     """ Determine if record types are equivalent with respect to reading """
     if rt1 == rt2:
@@ -70,6 +75,30 @@ def are_record_types_equivalent(rt1, rt2):
         return True
 
     return False
+
+
+def are_signatures_equivalent(sig1, sig2):
+    """ Verify if data signatures are equivalent.
+
+    Parameters
+    ----------
+    sig1, sig2 :
+        Data or group signatures returned by unnest or unnest_record.
+
+    """
+    if len(sig1) != len(sig2):
+        return False
+
+    for item1, item2 in zip(sig1, sig2):
+        key1, rt1 = item1
+        key2, rt2 = item2
+        if key1 != key2:
+            return False
+
+        if not are_record_types_equivalent(rt1, rt2):
+            return False
+
+    return True
 
 
 def coerce_simple(record_type, data, extra):
@@ -411,7 +440,7 @@ def infer_record_type(obj):
     is_scalar = np.isscalar(obj)
     is_array = isinstance(obj, np.ndarray)
     while is_scalar and is_array:
-        obj = obj.value()
+        obj = obj.item()
         is_scalar = np.isscalar(obj)
         is_array = isinstance(obj, np.ndarray)
 
@@ -566,15 +595,70 @@ def get_decoded(dict_like, *attrs):
     }
 
 
+def get_record_type(dict_like):
+    """ Retrived decoded record type from a dict-like object. """
+    return get_decoded(dict_like, 'RecordType').get('RecordType')
+
+
 def unnest(data):
-    """ Provide paths for structure mappings. """
-    items = [('', data)]
-    for parent, obj in items:
-        if isinstance(obj, collections.Mapping):
-            for key in obj:
+    """ Unnest data.
+
+    Parameters
+    ----------
+    data :
+        Data to unnest
+
+    Returns
+    -------
+    record_signature :
+        A tuple of (path, record_type) tuples where each component of the data
+        is identified in the path.
+
+    """
+    record_type, _, _, _ = infer_record_type(data)
+    items = [('', record_type, data)]
+    for parent, record_type, obj in items:
+        if record_type in SIMPLE_RECORD_TYPES:
+            continue
+        if are_record_types_equivalent(record_type, 'structure'):
+            sub_items = sorted(obj.items())
+        elif are_record_types_equivalent(record_type, 'cell'):
+            sub_items = [
+                (cell_label(i), sub_obj)
+                for i, sub_obj in enumerate(obj, start=1)
+            ]
+        for key, sub_obj in sub_items:
+            path = "/".join((parent, key)).lstrip("/")
+            sub_record_type, _, _, _ = infer_record_type(sub_obj)
+            items.append((path, sub_record_type, sub_obj))
+    return tuple(item[:2] for item in items)
+
+
+def unnest_record(grp):
+    """ Unnest a record group stored on file.
+
+    Parameters
+    ----------
+    grp : h5py.Group
+        The group to unnest.
+
+    Returns
+    -------
+    record_signature :
+        A tuple of (path, record_type) tuples where each component of the group
+        is identified in the path.
+
+    """
+    record_type = get_record_type(grp.attrs)
+    items = [('', record_type, grp)]
+    for parent, record_type, obj in items:
+        if record_type not in SIMPLE_RECORD_TYPES:
+            for key in sorted(obj.keys()):
                 path = "/".join((parent, key)).lstrip("/")
-                items.append((path, obj[key]))
-    return dict(items[1:])
+                sub_obj = obj[key]
+                sub_record_type = get_record_type(sub_obj.attrs)
+                items.append((path, sub_record_type, sub_obj))
+    return tuple(item[:2] for item in items)
 
 
 def update_header(attrs):

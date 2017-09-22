@@ -2,7 +2,7 @@ import numpy as np
 from scipy.sparse import coo_matrix
 
 from .utils import (
-    get_decoded, get_empty_for_type, is_simple, is_supported,
+    cell_label, get_decoded, get_empty_for_type, is_simple, is_supported,
 )
 
 
@@ -237,7 +237,7 @@ def _extract_data_from_group(grp, label, attrs):
     if record_type in ('cell', 'structures', 'objects'):
         record_size = attrs['RecordSize'].astype(int)
         nr = np.prod(record_size)
-        labels = ['element {}'.format(i) for i in range(1, nr + 1)]
+        labels = [cell_label(i) for i in range(1, nr + 1)]
         data = _extract_composite_data(grp, labels)
         if record_size[0] > 1 or len(record_size) > 2:
             data = np.array(

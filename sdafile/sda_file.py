@@ -21,9 +21,9 @@ import numpy as np
 from .extract import extract
 from .inserter import Inserter
 from .utils import (
-    are_record_types_equivalent, error_if_bad_header, error_if_not_writable,
+    are_signatures_equivalent, error_if_bad_header, error_if_not_writable,
     get_decoded, infer_record_type, is_valid_writable, set_encoded, unnest,
-    update_header, write_header,
+    unnest_record, update_header, write_header,
 )
 
 
@@ -211,7 +211,8 @@ class SDAFile(object):
         with open(path, 'wb') as f:
             f.write(self.extract(label))
 
-    def insert(self, label, data, description='', deflate=0):
+    def insert(self, label, data, description='', deflate=0,
+               as_structures=False):
         """ Insert data into an SDA file.
 
         Parameters
@@ -225,12 +226,18 @@ class SDAFile(object):
         deflate : int, optional
             An integer value from 0 to 9, specifying the compression level to
             be applied to the stored data.
+        as_record : bool, optional
+            If specified, data that is storable as a cell record and has
+            homogenous cells will be stored as a "structures" record. Note that
+            this does not extend to nested cell records.
 
         Raises
         ------
         ValueError if the data is of an unsupported type
         ValueError if the label contains invalid characters
         ValueError if the label exists
+        ValueError if `as_structures` is True and the data cannot be stored as
+        a structures record.
 
         Notes
         -----
@@ -292,6 +299,27 @@ class SDAFile(object):
         if inserter.record_type is None:
             msg = "{!r} is not a supported type".format(data)
             raise ValueError(msg)
+
+        if as_structures:
+            if inserter.record_type != 'cell':
+                msg = "Data cannot be stored as a 'structures' record."
+                raise ValueError(msg)
+
+            # Signatures must be homogeneous.
+            signatures = set(unnest(sub_data) for sub_data in np.ravel(data))
+            if len(signatures) > 1:
+                msg = "Data cells are not homogenous"
+                raise ValueError(msg)
+
+            # The top-most record must be a structure record
+            sig = signatures.pop()
+            record_type = sig[0][1]
+            if record_type != 'structure':
+                msg = "Data does not contain structure records"
+                raise ValueError(msg)
+
+            # Tell the inserter to use the 'structures' record type
+            inserter.record_type = 'structures'
 
         with self._h5file('r+') as h5file:
             inserter.insert(h5file, description)
@@ -455,9 +483,9 @@ class SDAFile(object):
         """
         self._validate_can_write()
         self._validate_labels(label, must_exist=True)
-        with self._h5file('r') as h5file:
+        with self._h5file('r+') as h5file:
             attrs = get_decoded(h5file[label].attrs, 'Deflate', 'Description')
-        self.remove(label)
+            del h5file[label]
         self.insert(label, data, attrs['Description'], attrs['Deflate'])
 
     def update_object(self, label, data):
@@ -485,47 +513,20 @@ class SDAFile(object):
         if record_type != 'structure':
             raise ValueError("Input data is not a mapping")
 
-        # Visitor checking for compatibility between the object record and
-        # passed data.
-        def _compatible_visitor(path, grp, data):
-            """ Visitor testing compatibility between record and data. """
-            parts = path.split('/')
-            for part in parts:
-                data = data[part]
-
-            record_type, _, _, _ = infer_record_type(data)
-            attrs = get_decoded(grp[path].attrs)
-            equivalent = are_record_types_equivalent(
-                record_type,
-                attrs['RecordType']
-            )
-            if not equivalent:
-                return False
-
-        with self._h5file('r') as h5file:
+        with self._h5file('r+') as h5file:
             # Check the general structure of the data and file
             grp = h5file[label]
             attrs = get_decoded(grp.attrs)
             if not attrs['RecordType'] == 'object':
                 raise ValueError("Record '{}' is not an object".format(label))
-            file_keys = sorted(unnest(grp))
-            data_keys = sorted(unnest(data))
-            success = file_keys == data_keys
-            if success:
-                # Check for compatibility
-                success = h5file[label].visit(
-                    partial(
-                        _compatible_visitor,
-                        grp=grp,
-                        data=data,
-                    )
-                )
+            record_sig = unnest_record(grp)
+            data_sig = unnest(data)
+            if not are_signatures_equivalent(record_sig, data_sig):
+                msg = "Data is not compatible with record '{}'"
+                raise ValueError(msg.format(label))
 
-        if success is False:   # Using 'is' because it could be None
-            msg = "Data is not compatible with record '{}'"
-            raise ValueError(msg.format(label))
+            del h5file[label]
 
-        self.remove(label)
         self.insert(label, data, attrs['Description'], int(attrs['Deflate']))
 
         # Fix the record type and updat the header
