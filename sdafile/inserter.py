@@ -3,8 +3,8 @@
 import numpy as np
 
 from .utils import (
-    cell_label, coerce_simple, infer_record_type, is_simple,
-    is_valid_matlab_field_label, set_encoded, update_header,
+    are_record_types_equivalent, cell_label, coerce_simple, infer_record_type,
+    is_simple, is_valid_matlab_field_label, set_encoded, update_header,
 )
 
 
@@ -81,7 +81,7 @@ class Inserter(object):
         data = self.data
         # Specify additional group attributes
         group_attrs = {}
-        if self.record_type == 'cell':
+        if are_record_types_equivalent(self.record_type, 'cell'):
             if isinstance(data, np.ndarray):
                 record_size = np.atleast_2d(data).shape
                 data = data.ravel(order='F')
@@ -90,7 +90,7 @@ class Inserter(object):
             nr = np.prod(record_size)
             labels = [cell_label(i) for i in range(1, nr + 1)]
             group_attrs['RecordSize'] = record_size
-        elif self.record_type == 'structure':
+        elif are_record_types_equivalent(self.record_type, 'structure'):
             nr = len(data)
             data = sorted((str(key), value) for key, value in data.items())
             labels, data = zip(*data)

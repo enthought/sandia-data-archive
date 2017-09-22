@@ -50,17 +50,17 @@ class TestUtils(unittest.TestCase):
     def test_unnest(self):
         data = dict(a=1, b=True, c='foo')
         answer = unnest(data)
-        expected = [
+        expected = (
             ('', 'structure'),
             ('a', 'numeric'),
             ('b', 'logical'),
             ('c', 'character')
-        ]
+        )
         self.assertEqual(answer, expected)
 
         data = dict(a=1, b=True, c=dict(d='foo', e=5, f=dict(g=6)))
         answer = unnest(data)
-        expected = [
+        expected = (
             ('', 'structure'),
             ('a', 'numeric'),
             ('b', 'logical'),
@@ -69,7 +69,7 @@ class TestUtils(unittest.TestCase):
             ('c/e', 'numeric'),
             ('c/f', 'structure'),
             ('c/f/g', 'numeric'),
-        ]
+        )
         self.assertEqual(answer, expected)
 
     def test_coerce_character(self):

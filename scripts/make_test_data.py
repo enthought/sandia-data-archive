@@ -43,7 +43,7 @@ def make_example_data(filename):
 
     desc = "Structure array combining examples A1 and A2 (repeated)"
     cell = np.array([a1a2, a1a2], dtype=object).reshape(2, 1)
-    sda_file.insert("example G", cell, desc)
+    sda_file.insert("example G", cell, desc, as_structures=True)
 
     desc = "Cell array of structures combining examples A1-A4"
     a3a4 = {"A3": EXAMPLE_A3, "A4": EXAMPLE_A4}

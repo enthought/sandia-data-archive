@@ -126,7 +126,14 @@ TEST_CELL = [
         ],
         dtype=object,
         order='F',
-    )
+    ),
+    [
+        {
+            'foo': 'foo',
+            'bar': np.arange(4),
+            'baz': np.array([True, False])
+        },
+    ] * 3,
 ]
 
 TEST_STRUCTURE = [

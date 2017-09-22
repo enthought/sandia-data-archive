@@ -606,7 +606,7 @@ def unnest(data):
     Returns
     -------
     record_signature :
-        A list of (path, record_type) tuples where each component of the data
+        A tuple of (path, record_type) tuples where each component of the data
         is identified in the path.
 
     """
@@ -626,7 +626,7 @@ def unnest(data):
             path = "/".join((parent, key)).lstrip("/")
             sub_record_type, _, _, _ = infer_record_type(sub_obj)
             items.append((path, sub_record_type, sub_obj))
-    return [item[:2] for item in items]
+    return tuple(item[:2] for item in items)
 
 
 def unnest_record(grp):
@@ -640,7 +640,7 @@ def unnest_record(grp):
     Returns
     -------
     record_signature :
-        A list of (path, record_type) tuples where each component of the group
+        A tuple of (path, record_type) tuples where each component of the group
         is identified in the path.
 
     """
@@ -653,7 +653,7 @@ def unnest_record(grp):
                 sub_obj = obj[key]
                 sub_record_type = get_record_type(sub_obj.attrs)
                 items.append((path, sub_record_type, sub_obj))
-    return [item[:2] for item in items]
+    return tuple(item[:2] for item in items)
 
 
 def update_header(attrs):

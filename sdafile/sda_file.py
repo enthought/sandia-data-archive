@@ -211,7 +211,8 @@ class SDAFile(object):
         with open(path, 'wb') as f:
             f.write(self.extract(label))
 
-    def insert(self, label, data, description='', deflate=0):
+    def insert(self, label, data, description='', deflate=0,
+               as_structures=False):
         """ Insert data into an SDA file.
 
         Parameters
@@ -225,12 +226,18 @@ class SDAFile(object):
         deflate : int, optional
             An integer value from 0 to 9, specifying the compression level to
             be applied to the stored data.
+        as_record : bool, optional
+            If specified, data that is storable as a cell record and has
+            homogenous cells will be stored as a "structures" record. Note that
+            this does not extend to nested cell records.
 
         Raises
         ------
         ValueError if the data is of an unsupported type
         ValueError if the label contains invalid characters
         ValueError if the label exists
+        ValueError if `as_structures` is True and the data cannot be stored as
+        a structures record.
 
         Notes
         -----
@@ -292,6 +299,27 @@ class SDAFile(object):
         if inserter.record_type is None:
             msg = "{!r} is not a supported type".format(data)
             raise ValueError(msg)
+
+        if as_structures:
+            if inserter.record_type != 'cell':
+                msg = "Data cannot be stored as a 'structures' record."
+                raise ValueError(msg)
+
+            # Signatures must be homogeneous.
+            signatures = set(unnest(sub_data) for sub_data in np.ravel(data))
+            if len(signatures) > 1:
+                msg = "Data cells are not homogenous"
+                raise ValueError(msg)
+
+            # The top-most record must be a structure record
+            sig = signatures.pop()
+            record_type = sig[0][1]
+            if record_type != 'structure':
+                msg = "Data does not contain structure records"
+                raise ValueError(msg)
+
+            # Tell the inserter to use the 'structures' record type
+            inserter.record_type = 'structures'
 
         with self._h5file('r+') as h5file:
             inserter.insert(h5file, description)
