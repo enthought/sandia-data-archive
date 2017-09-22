@@ -16,13 +16,13 @@ from sdafile.testing import (
 )
 from sdafile.utils import (
     CELL_EQUIVALENT, STRUCTURE_EQUIVALENT, SUPPORTED_RECORD_TYPES,
-    are_record_types_equivalent, coerce_character, coerce_complex, coerce_file,
-    coerce_logical, coerce_numeric, coerce_simple, coerce_sparse,
-    coerce_sparse_complex, error_if_bad_attr, error_if_bad_header,
-    error_if_not_writable, get_date_str, get_decoded, get_empty_for_type,
-    infer_record_type, is_valid_date, is_valid_file_format,
+    are_record_types_equivalent, are_signatures_equivalent, coerce_character,
+    coerce_complex, coerce_file, coerce_logical, coerce_numeric, coerce_simple,
+    coerce_sparse, coerce_sparse_complex, error_if_bad_attr,
+    error_if_bad_header, error_if_not_writable, get_date_str, get_decoded,
+    get_empty_for_type, infer_record_type, is_valid_date, is_valid_file_format,
     is_valid_format_version, is_valid_matlab_field_label, is_valid_writable,
-    set_encoded, unnest, update_header, write_header
+    set_encoded, unnest, unnest_record, update_header, write_header
 )
 
 
@@ -47,6 +47,34 @@ class TestUtils(unittest.TestCase):
 
         self.assertEqual(sorted(equivalents), sorted(expected))
 
+    def test_are_signatures_equivalent(self):
+
+        sig = (
+            ('', 'structure'),
+            ('a', 'numeric'),
+            ('b', 'logical'),
+            ('c', 'character')
+        )
+        self.assertTrue(are_signatures_equivalent(sig, sig))
+        self.assertFalse(are_signatures_equivalent(sig, sig[1:]))
+        self.assertFalse(are_signatures_equivalent(sig, sig[::-1]))
+
+        sig2 = (
+            ('', 'structure'),
+            ('a', 'numeric'),
+            ('b', 'logical'),
+            ('d', 'character')
+        )
+        self.assertFalse(are_signatures_equivalent(sig, sig2))
+
+        sig3 = (
+            ('', 'structure'),
+            ('a', 'numeric'),
+            ('b', 'logical'),
+            ('c', 'numeric')
+        )
+        self.assertFalse(are_signatures_equivalent(sig, sig3))
+
     def test_unnest(self):
         data = dict(a=1, b=True, c='foo')
         answer = unnest(data)
@@ -58,19 +86,60 @@ class TestUtils(unittest.TestCase):
         )
         self.assertEqual(answer, expected)
 
-        data = dict(a=1, b=True, c=dict(d='foo', e=5, f=dict(g=6)))
+        self.assertEqual(unnest(1), (('', 'numeric'),))
+        self.assertEqual(unnest(True), (('', 'logical'),))
+        self.assertEqual(unnest('foo'), (('', 'character'),))
+        self.assertEqual(unnest([]), (('', 'cell'),))
+        self.assertEqual(unnest({}), (('', 'structure'),))
+
+        data = dict(
+            a=1, b=True, c=dict(d='foo', e=5, f=dict(g=6)),
+            h=['hello', np.arange(5)],
+        )
         answer = unnest(data)
         expected = (
             ('', 'structure'),
             ('a', 'numeric'),
             ('b', 'logical'),
             ('c', 'structure'),
+            ('h', 'cell'),
             ('c/d', 'character'),
             ('c/e', 'numeric'),
             ('c/f', 'structure'),
+            ('h/element 1', 'character'),
+            ('h/element 2', 'numeric'),
             ('c/f/g', 'numeric'),
         )
         self.assertEqual(answer, expected)
+
+    def test_unnest_record(self):
+        with temporary_h5file() as h5file:
+            grp = h5file.create_group('test')
+            set_encoded(grp.attrs, RecordType='structure')
+            sub_grp = grp.create_group('a')
+            set_encoded(sub_grp.attrs, RecordType='numeric')
+            sub_grp = grp.create_group('b')
+            set_encoded(sub_grp.attrs, RecordType='logical')
+            sub_grp = grp.create_group('c')
+            set_encoded(sub_grp.attrs, RecordType='cell')
+            sub_sub_grp = sub_grp.create_group('e')
+            set_encoded(sub_sub_grp.attrs, RecordType='numeric')
+            sub_sub_grp = sub_grp.create_group('f')
+            set_encoded(sub_sub_grp.attrs, RecordType='numeric')
+            sub_grp = grp.create_group('d')
+            set_encoded(sub_grp.attrs, RecordType='character')
+
+            answer = unnest_record(grp)
+            expected = (
+                ('', 'structure'),
+                ('a', 'numeric'),
+                ('b', 'logical'),
+                ('c', 'cell'),
+                ('d', 'character'),
+                ('c/e', 'numeric'),
+                ('c/f', 'numeric'),
+            )
+            self.assertEqual(answer, expected)
 
     def test_coerce_character(self):
         coerced = coerce_character(string.printable)

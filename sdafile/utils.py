@@ -86,6 +86,8 @@ def are_signatures_equivalent(sig1, sig2):
         Data or group signatures returned by unnest or unnest_record.
 
     """
+    if len(sig1) != len(sig2):
+        return False
 
     for item1, item2 in zip(sig1, sig2):
         key1, rt1 = item1
@@ -620,7 +622,7 @@ def unnest(data):
         elif are_record_types_equivalent(record_type, 'cell'):
             sub_items = [
                 (cell_label(i), sub_obj)
-                for i, sub_obj in enumerate(obj)
+                for i, sub_obj in enumerate(obj, start=1)
             ]
         for key, sub_obj in sub_items:
             path = "/".join((parent, key)).lstrip("/")
