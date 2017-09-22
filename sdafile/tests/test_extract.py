@@ -1,5 +1,3 @@
-import io
-import string
 import unittest
 
 import numpy as np
@@ -10,34 +8,27 @@ from sdafile.extract import (
     extract_character, extract_complex, extract_file, extract_logical,
     extract_numeric, extract_sparse, extract_sparse_complex,
 )
-from sdafile.utils import (
-    coerce_character, coerce_complex, coerce_file, coerce_logical,
-    coerce_numeric,
-)
-from sdafile.testing import TEST_ARRAYS, TEST_SCALARS
 
 
 class TestExtract(unittest.TestCase):
 
     def test_extract_character(self):
-        expected = string.printable
-        stored = coerce_character(expected)
+        expected = '01'
+        stored = np.array([48, 49], np.uint8).reshape(2, -1)
         extracted = extract_character(stored)
         self.assertEqual(extracted, expected)
 
     def test_extract_complex(self):
-
         expected = np.arange(6, dtype=np.complex128)
         expected.imag = -1
-
-        stored = coerce_complex(expected)
-        extracted = extract_complex(stored, (6,))
+        stored = np.vstack([expected.real, expected.imag])
+        extracted = extract_complex(stored, (1, 6))
         self.assertEqual(expected.dtype, extracted.dtype)
         assert_array_equal(expected, extracted)
 
         expected = expected.astype(np.complex64)
         stored = stored.astype(np.float32)
-        extracted = extract_complex(stored, (6,))
+        extracted = extract_complex(stored, (1, 6))
         self.assertEqual(expected.dtype, extracted.dtype)
         assert_array_equal(expected, extracted)
 
@@ -47,9 +38,8 @@ class TestExtract(unittest.TestCase):
         assert_array_equal(expected_2d, extracted)
 
     def test_extract_file(self):
-        contents = b'0123456789ABCDEF'
-        buf = io.BytesIO(contents)
-        stored = coerce_file(buf)
+        contents = b'01'
+        stored = np.array([48, 49], np.uint8).reshape(1, 2)
         extracted = extract_file(stored)
         self.assertEqual(extracted, contents)
 
@@ -58,15 +48,21 @@ class TestExtract(unittest.TestCase):
         self.assertEqual(extract_logical(0), False)
 
         expected = np.array([True, False, True, True], dtype=bool)
-        stored = coerce_logical(expected)
+        stored = np.atleast_2d(expected.view(np.uint8)).T
         extracted = extract_logical(stored)
         self.assertEqual(extracted.dtype, expected.dtype)
         assert_array_equal(extracted, expected)
 
     def test_extract_numeric(self):
-        for data, typ in TEST_SCALARS + TEST_ARRAYS:
-            if typ == 'numeric':
-                assert_equal(extract_numeric(coerce_numeric(data)), data)
+        expected = np.array([1, 1, 321])
+        stored = np.atleast_2d(expected).T
+        extracted = extract_numeric(stored)
+        assert_array_equal(extracted, expected)
+
+        expected = 3.14159
+        stored = np.atleast_2d(expected).T
+        extracted = extract_numeric(stored)
+        assert_equal(extracted, expected)
 
     def test_extract_sparse(self):
         row = np.array([0, 2])

@@ -6,14 +6,12 @@ interaction with HDF5 are not included here.
 
 """
 
-import collections
 from datetime import datetime
 import re
 import string
 import time
 
 import numpy as np
-from scipy.sparse import issparse
 
 from .exceptions import BadSDAFile
 
@@ -101,196 +99,6 @@ def are_signatures_equivalent(sig1, sig2):
     return True
 
 
-def coerce_simple(record_type, data, extra):
-    """ Coerce a simple record based on its record type.
-
-    Parameters
-    ----------
-    record_type : str or None
-        The record type.
-    data :
-        The object if scalar, the object cast as a numpy array if not, or None
-        the type is unsupported.
-    extra :
-        Extra information about the type returned by ``infer_record_type``.
-
-    Returns
-    -------
-    coerced :
-        The data coerced to storage form.
-    original_shape : tuple or None
-        The original shape of the data. This is only returned for complex and
-        sparse-complex data.
-
-    """
-    original_shape = None
-    if record_type == 'numeric':
-        if extra == 'complex':
-            original_shape = np.atleast_2d(data).shape
-            data = coerce_complex(data)
-        elif extra == 'sparse':
-            data = coerce_sparse(data)
-        elif extra == 'sparse+complex':
-            original_shape = data.shape
-            data = coerce_sparse_complex(data)
-        else:
-            data = coerce_numeric(data)
-    elif record_type == 'logical':
-        data = coerce_logical(data)
-    elif record_type == 'character':
-        data = coerce_character(data)
-    elif record_type == 'file':
-        data = coerce_file(data)
-    else:
-        # Should not happen
-        msg = "Unrecognized record type '{}'".format(record_type)
-        raise ValueError(msg)
-    return data, original_shape
-
-
-def coerce_character(data):
-    """ Coerce 'character' data to uint8 stored form
-
-    Parameters
-    ----------
-    data : str, unicode, or ndarray of '|S1'
-        Input string or array of characters
-
-    Returns
-    -------
-    coerced : ndarray
-        The string, encoded as ascii, and stored in a uint8 array
-
-    """
-    if isinstance(data, np.ndarray):
-        data = data.view(np.uint8)
-    else:
-        data = np.frombuffer(data.encode('ascii'), np.uint8)
-
-    # Matlab stores the transpose of 2D arrays. This must be applied here.
-    return np.atleast_2d(data).T
-
-
-def coerce_complex(data):
-    """ Coerce complex 'numeric' data
-
-    Parameters
-    ----------
-    data : array-like or complex
-        Input complex value
-
-    Returns
-    -------
-    coerced : ndarray
-        2xN array containing the real and imaginary values of the input as rows
-        0 and 1. This will have type float32 if the input type is complex64
-        and type float64 if the input type is complex128 (or equivalent).
-
-    """
-    data = np.atleast_2d(data).ravel(order='F')
-    return np.array([data.real, data.imag])
-
-
-def coerce_file(data):
-    """ Coerce a file object.
-
-    Parameters
-    ----------
-    data : file-like
-        An open file to read
-
-    Returns
-    -------
-    coerced : ndarray
-        The contents of the file as a byte array
-
-    """
-    contents = data.read()
-    return np.atleast_2d(np.frombuffer(contents, dtype=np.uint8))
-
-
-def coerce_logical(data):
-    """ Coerce 'logical' data to uint8 stored form
-
-    Parameters
-    ----------
-    data : array-like or bool
-        Input boolean value
-
-    Returns
-    -------
-    coerced : ndarray of uint8 or uint8
-        Scalar or array containing the input data coereced to uint8, clipped to
-        0 or 1.
-
-    """
-    if np.isscalar(data) or data.shape == ():
-        data = np.uint8(1 if data else 0)
-    else:
-        data = data.astype(np.uint8).clip(0, 1)
-    return np.atleast_2d(data)
-
-
-def coerce_numeric(data):
-    """ Coerce complex 'numeric' data
-
-    Parameters
-    ----------
-    data : array-like or scalar
-        Integer or floating-point values
-
-    Returns
-    -------
-    coerced : array-like or scalar
-        The data with at least 2 dimensions
-
-    """
-    # Matlab stores the transpose of 2D arrays. This must be unapplied here.
-    return np.atleast_2d(data).T
-
-
-def coerce_sparse(data):
-    """ Coerce sparse 'numeric' data to stored form.
-
-    Parameters
-    ----------
-    data : scipy.sparse.coo_matrix
-        Input sparse matrix.
-
-    Returns
-    -------
-    coerced : ndarray
-        3xN array containing the rows, columns, and values of the sparse matrix
-        in COO form. Note that the row and column arrays are 1-based to be
-        compatible with MATLAB.
-
-    """
-    # 3 x N, [row, column, value], 1-based
-    return np.array([data.row + 1, data.col + 1, data.data])
-
-
-def coerce_sparse_complex(data):
-    """ Coerce sparse and complex 'numeric' data to stored form.
-
-    Parameters
-    ----------
-    data : scipy.sparse.coo_matrix
-        Input sparse matrix.
-
-    Returns
-    -------
-    coerced : ndarray
-        3xN array containing the index, real, and imaginary values of the
-        sparse complex data. The index is unraveled and 1-based. The original
-        array shape is required to re-ravel the index and reconstitute the
-        sparse, complex data.
-
-    """
-    indices = np.ravel_multi_index((data.row, data.col), data.shape)
-    coerced = coerce_complex(data.data)
-    return np.vstack([indices + 1, coerced])  # 1-based
-
-
 def error_if_bad_attr(h5file, attr, is_valid):
     """ Raise BadSDAFile error if h5file has a bad SDA attribute.
 
@@ -362,161 +170,6 @@ def get_empty_for_type(record_type):
     except KeyError:
         msg = "Record type '{}' cannot be empty".format(record_type)
         raise ValueError(msg)
-
-
-def infer_record_type(obj):
-    """ Infer record type of ``obj``.
-
-    Supported types are 'numeric', 'bool', 'character', and 'cell'.
-
-    Parameters
-    ----------
-    obj :
-        An object to store
-
-    Returns
-    -------
-    record_type : str or None
-        The inferred record type, or None if the object type is not supported.
-    cast_obj :
-        The object if scalar, the object cast as a numpy array if not, or None
-        the type is unsupported.
-    is_empty : bool
-        Flag indicating whether the data is empty.
-    extra :
-        Extra information about the type. This may be None, 'sparse',
-        'complex', or 'sparse+complex' for 'numeric' types, and will be None in
-        all other cases.
-
-    Notes
-    -----
-    The inference routines are unambiguous, and require the user to understand
-    the input data in reference to these rules. The user has flexibility to
-    coerce data before attempting to store it to have it be stored as a desired
-    type.
-
-    sequences :
-        Lists, tuples, and anything else that identifies as a
-        collections.Sequence are always inferred to be 'cell' records, no
-        matter the contents.
-
-    mappings :
-        Dictionaries and anything else that identifies as
-        collections.Mapping and not another type listed here are inferred to be
-        'structure' records.
-
-    numpy arrays :
-        If the dtype is a supported numeric type, then the 'numeric' record
-        type is inferred. Arrays of 'bool' type are inferred to be 'logical'.
-        Arrays of characters (dtype 'S1') are inferred to be 'character' type.
-        Arrays of 'object' and multi-character string type are inferred to be
-        'cell' arrays.
-
-    sparse arrays (from scipy.sparse) :
-        These are inferred to be 'numeric' and 'sparse', if the dtype is a type
-        supported for numpy arrays.
-
-    strings :
-        These are always inferred to be 'character' type. An attempt will be
-        made to convert the input to ascii encoded bytes, no matter the
-        underlying encoding. This may result in an encoding exception if the
-        input cannot be ascii encoded.
-
-    non-string scalars :
-        Non-string scalars are inferred to be 'numeric' if numeric, or
-        'logical' if boolean.
-
-    file-like :
-        File-like objects (with a 'read' method) are inferred to be 'file'
-        records.
-
-    Anything not listed above is not supported.
-
-    """
-
-    UNSUPPORTED = None, None, None, None
-
-    # Unwrap scalar arrays to simplify the following
-    is_scalar = np.isscalar(obj)
-    is_array = isinstance(obj, np.ndarray)
-    while is_scalar and is_array:
-        obj = obj.item()
-        is_scalar = np.isscalar(obj)
-        is_array = isinstance(obj, np.ndarray)
-
-    if isinstance(obj, (str, np.unicode)):  # Numpy string type is a str
-        is_empty = len(obj) == 0
-        extra = None
-        return 'character', obj, is_empty, extra
-
-    if is_array and obj.dtype == np.dtype('S1'):
-        is_empty = obj.size == 0
-        extra = None
-        return 'character', obj, is_empty, extra
-
-    if isinstance(obj, collections.Sequence):
-        is_empty = len(obj) == 0
-        extra = None
-        return 'cell', obj, is_empty, extra
-
-    if issparse(obj):
-        if obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return UNSUPPORTED
-        if not np.issubdtype(obj.dtype, np.number):
-            return UNSUPPORTED
-        is_empty = np.prod(obj.shape) == 0
-        extra = 'sparse'
-        if np.issubdtype(obj.dtype, np.complexfloating):
-            extra += '+complex'
-        return 'numeric', obj.tocoo(), is_empty, extra
-
-    if np.iscomplexobj(obj):
-        if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return UNSUPPORTED
-        if is_scalar:
-            is_empty = np.isnan(obj.real) and np.isnan(obj.complex)
-        else:
-            is_empty = np.isnan(obj.real).all() and np.isnan(obj.complex).all()
-        extra = 'complex'
-        return 'numeric', obj, is_empty, extra
-
-    if isinstance(obj, collections.Mapping):
-        is_empty = len(obj) == 0
-        extra = None
-        return 'structure', obj, is_empty, extra
-
-    if hasattr(obj, 'read'):
-        is_empty = False
-        extra = None
-        return 'file', obj, is_empty, extra
-
-    # numeric and logical scalars and arrays
-    extra = None
-    is_empty = np.asarray(obj).size == 0
-    cast_obj = obj
-    if is_scalar:
-        check = isinstance
-        if np.asarray(obj).dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return UNSUPPORTED
-    elif is_array:
-        check = issubclass
-        if cast_obj.dtype.char in UNSUPPORTED_NUMERIC_TYPE_CODES:
-            return UNSUPPORTED
-        obj = cast_obj.dtype.type
-    else:
-        return UNSUPPORTED
-
-    if check(obj, (bool, np.bool_)):
-        return 'logical', cast_obj, is_empty, extra
-
-    if check(obj, (int, np.long, float, np.number)):
-        is_empty = is_empty or np.all(np.isnan(cast_obj))
-        return 'numeric', cast_obj, is_empty, extra
-
-    if check(obj, (np.object_, np.unicode_, np.str_)):
-        return 'cell', cast_obj, is_empty, extra
-
-    return UNSUPPORTED
 
 
 def is_simple(record_type):
@@ -600,13 +253,15 @@ def get_record_type(dict_like):
     return get_decoded(dict_like, 'RecordType').get('RecordType')
 
 
-def unnest(data):
+def unnest(data, registry):
     """ Unnest data.
 
     Parameters
     ----------
     data :
         Data to unnest
+    registry : InserterRegistry
+        Registry used to look up inserters
 
     Returns
     -------
@@ -615,7 +270,7 @@ def unnest(data):
         is identified in the path.
 
     """
-    record_type, _, _, _ = infer_record_type(data)
+    record_type = getattr(registry.get_inserter(data), 'record_type', None)
     items = [('', record_type, data)]
     for parent, record_type, obj in items:
         if record_type in SIMPLE_RECORD_TYPES:
@@ -629,7 +284,9 @@ def unnest(data):
             ]
         for key, sub_obj in sub_items:
             path = "/".join((parent, key)).lstrip("/")
-            sub_record_type, _, _, _ = infer_record_type(sub_obj)
+            sub_record_type = getattr(
+                registry.get_inserter(sub_obj), 'record_type', None
+            )
             items.append((path, sub_record_type, sub_obj))
     return tuple(item[:2] for item in items)
 

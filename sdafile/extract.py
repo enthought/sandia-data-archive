@@ -148,7 +148,7 @@ def extract_logical(data):
 
     """
     data = np.asarray(data, dtype=bool)
-    return reduce_array(data)
+    return reduce_array(data.T)
 
 
 def extract_numeric(data):

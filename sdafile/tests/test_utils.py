@@ -1,26 +1,20 @@
 import datetime
-import io
 from itertools import combinations
-import string
 import unittest
 
 import numpy as np
 from numpy.testing import assert_array_equal
-from scipy.sparse import coo_matrix
 
 from sdafile.exceptions import BadSDAFile
+from sdafile.record_inserter import InserterRegistry
 from sdafile.testing import (
-    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELL, TEST_SCALARS, TEST_SPARSE,
-    TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, temporary_file,
-    temporary_h5file
+    BAD_ATTRS, GOOD_ATTRS, temporary_h5file
 )
 from sdafile.utils import (
     CELL_EQUIVALENT, STRUCTURE_EQUIVALENT, SUPPORTED_RECORD_TYPES,
-    are_record_types_equivalent, are_signatures_equivalent, coerce_character,
-    coerce_complex, coerce_file, coerce_logical, coerce_numeric, coerce_simple,
-    coerce_sparse, coerce_sparse_complex, error_if_bad_attr,
+    are_record_types_equivalent, are_signatures_equivalent, error_if_bad_attr,
     error_if_bad_header, error_if_not_writable, get_date_str, get_decoded,
-    get_empty_for_type, infer_record_type, is_valid_date, is_valid_file_format,
+    get_empty_for_type, is_valid_date, is_valid_file_format,
     is_valid_format_version, is_valid_matlab_field_label, is_valid_writable,
     set_encoded, unnest, unnest_record, update_header, write_header
 )
@@ -77,7 +71,8 @@ class TestUtils(unittest.TestCase):
 
     def test_unnest(self):
         data = dict(a=1, b=True, c='foo')
-        answer = unnest(data)
+        registry = InserterRegistry()
+        answer = unnest(data, registry)
         expected = (
             ('', 'structure'),
             ('a', 'numeric'),
@@ -86,17 +81,17 @@ class TestUtils(unittest.TestCase):
         )
         self.assertEqual(answer, expected)
 
-        self.assertEqual(unnest(1), (('', 'numeric'),))
-        self.assertEqual(unnest(True), (('', 'logical'),))
-        self.assertEqual(unnest('foo'), (('', 'character'),))
-        self.assertEqual(unnest([]), (('', 'cell'),))
-        self.assertEqual(unnest({}), (('', 'structure'),))
+        self.assertEqual(unnest(1, registry), (('', 'numeric'),))
+        self.assertEqual(unnest(True, registry), (('', 'logical'),))
+        self.assertEqual(unnest('foo', registry), (('', 'character'),))
+        self.assertEqual(unnest([], registry), (('', 'cell'),))
+        self.assertEqual(unnest({}, registry), (('', 'structure'),))
 
         data = dict(
             a=1, b=True, c=dict(d='foo', e=5, f=dict(g=6)),
             h=['hello', np.arange(5)],
         )
-        answer = unnest(data)
+        answer = unnest(data, registry)
         expected = (
             ('', 'structure'),
             ('a', 'numeric'),
@@ -140,92 +135,6 @@ class TestUtils(unittest.TestCase):
                 ('c/f', 'numeric'),
             )
             self.assertEqual(answer, expected)
-
-    def test_coerce_character(self):
-        coerced = coerce_character(string.printable)
-        self.assertEqual(coerced.dtype, np.dtype(np.uint8))
-        expected = np.array(
-            [ord(c) for c in string.printable], 
-            np.uint8
-        ).reshape(-1, 1)
-        assert_array_equal(coerced, expected)
-
-    def test_coerce_simple(self):
-        with self.assertRaises(ValueError):
-            coerce_simple('foo', 0, None)
-
-    def test_coerce_complex(self):
-        data = np.arange(6, dtype=np.complex128)
-        data.imag = -1
-
-        expected = np.array([data.real, data.imag], dtype=np.float64)
-        coerced = coerce_complex(data)
-        self.assertEqual(expected.dtype, coerced.dtype)
-        assert_array_equal(expected, coerced)
-
-        data = data.astype(np.complex64)
-        expected = expected.astype(np.float32)
-        coerced = coerce_complex(data)
-        self.assertEqual(expected.dtype, coerced.dtype)
-        assert_array_equal(expected, coerced)
-
-        # Flattened arrays are intrinsically column-major, because MATLAB
-        f_data = data.reshape((2, 3), order='F')
-        coerced = coerce_complex(f_data)
-        self.assertEqual(expected.dtype, coerced.dtype)
-        assert_array_equal(expected, coerced)
-
-        c_data = np.ascontiguousarray(f_data)
-        coerced = coerce_complex(c_data)
-        self.assertEqual(expected.dtype, coerced.dtype)
-        assert_array_equal(expected, coerced)
-
-    def test_coerce_file(self):
-        contents = b'0123456789ABCDEF'
-        buf = io.BytesIO(contents)
-        coerced = coerce_file(buf)
-        expected = np.atleast_2d(np.frombuffer(contents, dtype=np.uint8))
-        assert_array_equal(coerced, expected)
-
-    def test_coerce_logical(self):
-        self.assertEqual(coerce_logical(True), 1)
-        self.assertEqual(coerce_logical(False), 0)
-        self.assertEqual(coerce_logical(np.array(True)), 1)
-        self.assertEqual(coerce_logical(np.array(False)), 0)
-        self.assertEqual(coerce_logical(np.bool_(True)), 1)
-        self.assertEqual(coerce_logical(np.bool_(False)), 0)
-
-        x = np.array([True, False, True, True])
-        coerced = coerce_logical(x)
-        self.assertEqual(coerced.dtype, np.dtype(np.uint8))
-        assert_array_equal(coerced, [[1, 0, 1, 1]])
-
-    def test_coerce_numeric(self):
-        for data, typ in TEST_SCALARS + TEST_ARRAYS:
-            if typ == 'numeric':
-                coerced = coerce_numeric(data)
-                assert_array_equal(coerced, np.atleast_2d(data).T)
-
-    def test_coerce_sparse(self):
-        row = np.array([3, 4, 5, 6])
-        col = np.array([0, 1, 1, 4])
-        data = row + col
-
-        obj = coo_matrix((data, (row, col)))
-        coerced = coerce_sparse(obj)
-        expected = np.array([row + 1, col + 1, data])
-        assert_array_equal(coerced, expected)
-
-    def test_coerce_sparse_complex(self):
-        row = np.array([3, 4, 5, 6])
-        col = np.array([0, 1, 1, 4])
-        data = row + (1 + 1j) * col
-
-        obj = coo_matrix((data, (row, col)))
-        coerced = coerce_sparse_complex(obj)
-        idx = 5 * row + col + 1
-        expected = np.array([idx, data.real, data.imag])
-        assert_array_equal(coerced, expected)
 
     def test_error_if_bad_attr(self):
         with temporary_h5file() as h5file:
@@ -371,122 +280,3 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(attrs['Writable'], b'yes')
         self.assertEqual(attrs['Created'], attrs['Updated'])
         self.assertIsNotNone(attrs['Updated'])
-
-    def test_infer_record_type(self):
-
-        # scalars
-        for obj, typ in TEST_SCALARS:
-            msg = 'record type of {!r} != {}'.format(obj, typ)
-            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
-            self.assertEqual(record_type, typ, msg=msg)
-            self.assertEqual(cast_obj, obj)
-            self.assertFalse(is_empty)
-            if np.iscomplexobj(obj):
-                self.assertEqual(extra, 'complex')
-            else:
-                self.assertIsNone(extra)
-
-        # arrays
-        for obj, typ in TEST_ARRAYS:
-            msg = 'record type of {!r} != {}'.format(obj, typ)
-            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
-            self.assertEqual(record_type, typ, msg=msg)
-            self.assertFalse(is_empty)
-            assert_array_equal(cast_obj, np.asarray(obj))
-            if np.iscomplexobj(obj):
-                self.assertEqual(extra, 'complex')
-            else:
-                self.assertIsNone(extra)
-
-        # sparse
-        coo = TEST_SPARSE[0]
-        for obj in TEST_SPARSE:
-            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
-            self.assertEqual(record_type, 'numeric')
-            self.assertFalse(is_empty)
-            self.assertEqual(extra, 'sparse')
-            self.assertIsInstance(cast_obj, coo_matrix)
-            assert_array_equal(cast_obj.toarray(), coo.toarray())
-
-        # sparse+complex
-        coo = TEST_SPARSE_COMPLEX[0]
-        for obj in TEST_SPARSE_COMPLEX:
-            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
-            self.assertEqual(record_type, 'numeric')
-            self.assertFalse(is_empty)
-            self.assertEqual(extra, 'sparse+complex')
-            self.assertIsInstance(cast_obj, coo_matrix)
-            assert_array_equal(cast_obj.toarray(), coo.toarray())
-
-        # lists, tuples
-        for obj in TEST_CELL:
-            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
-            self.assertEqual(record_type, 'cell')
-            self.assertFalse(is_empty)
-            self.assertIsNone(extra)
-            self.assertIs(cast_obj, obj)
-
-        # dicts
-        for obj in TEST_STRUCTURE:
-            record_type, cast_obj, is_empty, extra = infer_record_type(obj)
-            self.assertEqual(record_type, 'structure')
-            self.assertFalse(is_empty)
-            self.assertIsNone(extra)
-            self.assertIs(cast_obj, obj)
-
-        # file
-        with temporary_file() as filename:
-            with open(filename, 'w') as f:
-                record_type, cast_obj, is_empty, extra = infer_record_type(f)
-            self.assertEqual(record_type, 'file')
-            self.assertFalse(is_empty)
-            self.assertIsNone(extra)
-            self.assertIs(cast_obj, f)
-
-        # empty
-        record_type, _, is_empty, _ = infer_record_type('')
-        self.assertEqual(record_type, 'character')
-        self.assertTrue(is_empty)
-
-        record_type, _, is_empty, _ = infer_record_type([])
-        self.assertEqual(record_type, 'cell')
-        self.assertTrue(is_empty)
-
-        record_type, _, is_empty, _ = infer_record_type({})
-        self.assertEqual(record_type, 'structure')
-        self.assertTrue(is_empty)
-
-        record_type, _, is_empty, _ = infer_record_type(coo_matrix([]))
-        self.assertEqual(record_type, 'numeric')
-        self.assertTrue(is_empty)
-
-        record_type, _, is_empty, _ = infer_record_type(np.nan)
-        self.assertEqual(record_type, 'numeric')
-        self.assertTrue(is_empty)
-
-        data = np.array([])
-        record_type, _, is_empty, _ = infer_record_type(data)
-        self.assertEqual(record_type, 'numeric')
-        self.assertTrue(is_empty)
-
-        data = np.array([np.nan, np.nan])
-        record_type, _, is_empty, _ = infer_record_type(data)
-        self.assertEqual(record_type, 'numeric')
-        self.assertTrue(is_empty)
-
-        data = np.array([], dtype=bool)
-        record_type, _, is_empty, _ = infer_record_type(data)
-        self.assertEqual(record_type, 'logical')
-        self.assertTrue(is_empty)
-
-        data = np.array([], dtype=object)
-        record_type, _, is_empty, _ = infer_record_type(data)
-        self.assertEqual(record_type, 'cell')
-        self.assertTrue(is_empty)
-
-        # Unsupported
-        for obj in TEST_UNSUPPORTED:
-            msg = 'record type of {!r} is not None'.format(obj)
-            record_type, cast_obj, _, extra = infer_record_type(obj)
-            self.assertIsNone(record_type, msg=msg)
-            self.assertIsNone(cast_obj)

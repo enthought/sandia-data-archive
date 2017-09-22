@@ -1,26 +1,21 @@
-import io
+from itertools import zip_longest
 import os
 import random
 import shutil
-import string
 import unittest
 
 import numpy as np
 from numpy.testing import assert_array_equal, assert_equal
-from scipy.sparse import coo_matrix
 
 from sdafile.exceptions import BadSDAFile
 from sdafile.sda_file import SDAFile
 from sdafile.testing import (
-    BAD_ATTRS, GOOD_ATTRS, TEST_ARRAYS, TEST_CELL, TEST_SCALARS, TEST_SPARSE,
-    TEST_SPARSE_COMPLEX, TEST_STRUCTURE, TEST_UNSUPPORTED, data_path,
-    temporary_file, temporary_h5file
+    BAD_ATTRS, GOOD_ATTRS, MockRecordInserter, TEST_NUMERIC, TEST_CHARACTER,
+    TEST_LOGICAL, TEST_SPARSE, TEST_SPARSE_COMPLEX, TEST_CELL, TEST_STRUCTURE,
+    TEST_UNSUPPORTED, data_path, temporary_file, temporary_h5file
 )
 from sdafile.utils import (
-    are_record_types_equivalent, coerce_character, coerce_complex, coerce_file,
-    coerce_logical, coerce_numeric, coerce_simple, coerce_sparse,
-    coerce_sparse_complex, get_decoded, infer_record_type, is_simple,
-    set_encoded, write_header
+    get_decoded, get_record_type, set_encoded, write_header,
 )
 
 
@@ -214,171 +209,14 @@ class TestSDAFileInsert(unittest.TestCase):
 
             self.assertEqual(sda_file.labels(), [])
 
-    def test_character(self):
-        values = (obj for (obj, typ) in TEST_SCALARS if typ == 'character')
-
+    def test_insert_called(self):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
-            for i, obj in enumerate(values):
-                label = 'test' + str(i)
-                deflate = i % 10
-                sda_file.insert(label, obj, label, deflate)
-                expected = coerce_character(obj)
-                self.assertSimpleRecord(
-                    sda_file, 'character', label, deflate, 'no', expected
-                )
+            called = []
+            sda_file._registry._inserters = [MockRecordInserter(called)]
+            sda_file.insert('foo', True, 'insert_called', 0)
 
-            label = 'test_empty'
-            deflate = 0
-            sda_file.insert(label, '', label, deflate)
-            self.assertSimpleRecord(
-                sda_file, 'character', label, deflate, 'yes', None
-            )
-
-    def test_logical_array(self):
-        values = (obj for (obj, typ) in TEST_ARRAYS if typ == 'logical')
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-
-            for i, obj in enumerate(values):
-                label = 'test' + str(i)
-                deflate = i % 10
-                sda_file.insert(label, obj, label, deflate)
-                expected = coerce_logical(np.asarray(obj))
-                self.assertSimpleRecord(
-                    sda_file, 'logical', label, deflate, 'no', expected
-                )
-
-            arr = np.array([], dtype=bool)
-            sda_file.insert('empty', arr, 'empty')
-            self.assertSimpleRecord(
-                sda_file, 'logical', 'empty', 0, 'yes', None
-            )
-
-    def test_logical_scalar(self):
-        values = (obj for (obj, typ) in TEST_SCALARS if typ == 'logical')
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-
-            for i, obj in enumerate(values):
-                label = 'test' + str(i)
-                deflate = i % 10
-                sda_file.insert(label, obj, label, deflate)
-                expected = 1 if obj else 0
-                self.assertSimpleRecord(
-                    sda_file, 'logical', label, deflate, 'no', expected
-                )
-
-    def test_numeric_array(self):
-        values = (obj for (obj, typ) in TEST_ARRAYS if typ == 'numeric')
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-
-            for i, obj in enumerate(values):
-                label = 'test' + str(i)
-                deflate = i % 10
-                sda_file.insert(label, obj, label, deflate)
-                is_complex = np.iscomplexobj(obj)
-                if is_complex:
-                    expected = coerce_complex(np.asarray(obj))
-                    shape = np.atleast_2d(obj).shape
-                    self.assertSimpleRecord(
-                        sda_file, 'numeric', label, deflate, 'no', expected,
-                        Complex='yes' if is_complex else 'no',
-                        ArraySize=shape
-                    )
-                else:
-                    expected = coerce_numeric(np.asarray(obj))
-                    self.assertSimpleRecord(
-                        sda_file, 'numeric', label, deflate, 'no', expected,
-                        Complex='yes' if is_complex else 'no',
-                    )
-
-            label = 'test_empty'
-            deflate = 0
-            sda_file.insert(label, np.array([]), label, deflate)
-            self.assertSimpleRecord(
-                sda_file, 'numeric', label, deflate, 'yes', None,
-                Complex='no'
-            )
-
-    def test_numeric_scalar(self):
-        values = (obj for (obj, typ) in TEST_SCALARS if typ == 'numeric')
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-
-            for i, obj in enumerate(values):
-                label = 'test' + str(i)
-                deflate = i % 10
-                sda_file.insert(label, obj, label, deflate)
-                is_complex = np.iscomplexobj(obj)
-                if is_complex:
-                    expected = coerce_complex(obj)
-                else:
-                    expected = coerce_numeric(obj)
-                self.assertSimpleRecord(
-                    sda_file, 'numeric', label, deflate, 'no', expected,
-                    Complex='yes' if is_complex else 'no',
-                    Sparse='no'
-                )
-
-            label = 'test_nan'
-            deflate = 0
-            sda_file.insert(label, np.nan, label, deflate)
-            self.assertSimpleRecord(
-                sda_file, 'numeric', label, deflate, 'yes', None
-            )
-
-    def test_sparse(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-
-            for i, obj in enumerate(TEST_SPARSE):
-                label = 'test' + str(i)
-                deflate = i % 10
-                sda_file.insert(label, obj, label, deflate)
-                expected = coerce_sparse(obj.tocoo())
-                self.assertSimpleRecord(
-                    sda_file, 'numeric', label, deflate, 'no', expected,
-                    Complex='no', Sparse='yes',
-                )
-
-    def test_sparse_complex(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-
-            for i, obj in enumerate(TEST_SPARSE_COMPLEX):
-                label = 'test' + str(i)
-                deflate = i % 10
-                sda_file.insert(label, obj, label, deflate)
-                expected = coerce_sparse_complex(obj.tocoo())
-                self.assertSimpleRecord(
-                    sda_file, 'numeric', label, deflate, 'no', expected,
-                    Complex='yes', Sparse='yes',
-                )
-
-    def test_cell(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-
-            for i, objs in enumerate(TEST_CELL):
-                label = 'test' + str(i)
-                deflate = i % 10
-                sda_file.insert(label, objs, label, deflate)
-                if isinstance(objs, np.ndarray):
-                    record_size = np.atleast_2d(objs).shape
-                else:
-                    record_size = (1, len(objs))
-
-                self.assertCompositeRecord(
-                    sda_file,
-                    label,
-                    objs,
-                    Deflate=deflate,
-                    RecordType='cell',
-                    Empty='no',
-                    RecordSize=record_size,
-                )
+        self.assertEqual(called, ['insert_called'])
 
     def test_structures(self):
         structure = {
@@ -386,6 +224,11 @@ class TestSDAFileInsert(unittest.TestCase):
             'bar': np.arange(4),
             'baz': np.array([True, False])
         }
+
+        failures = (
+            TEST_NUMERIC + TEST_LOGICAL + TEST_CHARACTER + TEST_STRUCTURE +
+            TEST_STRUCTURE + TEST_SPARSE + TEST_SPARSE_COMPLEX
+        )
 
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
@@ -395,19 +238,12 @@ class TestSDAFileInsert(unittest.TestCase):
             deflate = 0
             objs = [structure] * 5
             sda_file.insert(label, objs, label, deflate, as_structures=True)
-            self.assertCompositeRecord(
-                sda_file,
-                label,
-                objs,
-                Deflate=deflate,
-                RecordType='structures',
-                Empty='no',
-                RecordSize=(1, 5),
-            )
+            # Check the type
+            with sda_file._h5file('r') as h5file:
+                record_type = get_record_type(h5file[label].attrs)
+                self.assertEqual(record_type, 'structures')
 
             # Other record types should fail
-            failures = [data for (data, _) in TEST_SCALARS + TEST_ARRAYS]
-            failures += TEST_STRUCTURE + TEST_SPARSE + TEST_SPARSE_COMPLEX
             for data in failures:
                 with self.assertRaises(ValueError):
                     sda_file.insert('bad', data, 'bad', 0, as_structures=True)
@@ -427,30 +263,11 @@ class TestSDAFileInsert(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sda_file.insert('bad', data, 'bad', 0, as_structures=True)
 
-    def test_file(self):
-
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            contents = b'Hello world'
-            expected = coerce_file(io.BytesIO(contents))
-            label = 'file_test'
-
-            with temporary_file() as source_file:
-                with open(source_file, 'wb') as f:
-                    f.write(contents)
-                with open(source_file, 'rb') as f:
-                    sda_file.insert(label, f, label)
-
-            self.assertSimpleRecord(
-                sda_file, 'file', label, 0, 'no', expected,
-            )
-
     def test_from_file(self):
 
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
-            contents = b'Hello world'
-            expected = coerce_file(io.BytesIO(contents))
+            contents = b'01'
 
             with temporary_file() as source_file:
                 with open(source_file, 'wb') as f:
@@ -458,11 +275,7 @@ class TestSDAFileInsert(unittest.TestCase):
 
                 label = sda_file.insert_from_file(source_file)
                 sda_file.describe(label, label)
-
                 self.assertTrue(source_file.endswith(label))
-            self.assertSimpleRecord(
-                sda_file, 'file', label, 0, 'no', expected,
-            )
 
     def test_from_file_failure(self):
 
@@ -475,24 +288,6 @@ class TestSDAFileInsert(unittest.TestCase):
             # The source file is gone
             with self.assertRaises(ValueError):
                 sda_file.insert_from_file(source_file)
-
-    def test_structure(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-
-            for i, obj in enumerate(TEST_STRUCTURE):
-                label = 'test' + str(i)
-                deflate = i % 10
-                sda_file.insert(label, obj, label, deflate)
-                self.assertCompositeRecord(
-                    sda_file,
-                    label,
-                    obj,
-                    Deflate=deflate,
-                    RecordType='structure',
-                    Empty='no',
-                    FieldNames=' '.join(sorted(obj.keys())),
-                )
 
     def test_unsupported(self):
         with temporary_file() as file_path:
@@ -507,91 +302,6 @@ class TestSDAFileInsert(unittest.TestCase):
 
             # Make sure the 'Updated' attr does not change
             self.assertEqual(sda_file.Updated, 'Unmodified')
-
-    def assertAttrs(self, dict_like, **expected_attrs):
-        attrs = get_decoded(dict_like)
-        for key, value in expected_attrs.items():
-            assert_equal(attrs[key], value)
-        return attrs
-
-    def assertCompositeRecord(self, sda_file, label, expected, **group_attrs):
-        with sda_file._h5file('r') as h5file:
-            group = h5file[label]
-            self.assertCompositeGroup(group, expected, **group_attrs)
-
-    def assertSimpleRecord(self, sda_file, record_type, label, deflate,
-                           empty, expected, **data_attrs):
-        with sda_file._h5file('r') as h5file:
-            group = h5file[label]
-            self.assertAttrs(
-                group.attrs,
-                RecordType=record_type,
-                Deflate=deflate,
-                Description=label,
-                Empty=empty,
-            )
-
-            data_set = group[label]
-            self.assertDataSet(
-                data_set,
-                expected,
-                Empty=empty,
-                RecordType=record_type,
-                **data_attrs
-            )
-
-    def assertDataSet(self, data_set, expected, **data_attrs):
-        attrs = self.assertAttrs(data_set.attrs, **data_attrs)
-        if attrs['Empty'] == 'no':
-            assert_equal(data_set[()], expected)
-
-    def assertCompositeGroup(self, group, expected, **group_attrs):
-        """ Check a composite group """
-        attrs = self.assertAttrs(group.attrs, **group_attrs)
-
-        # Check the data
-        record_type = attrs['RecordType']
-        if are_record_types_equivalent(record_type, 'cell'):
-            expected = np.asarray(expected, dtype='object').ravel(order='F')
-            labels = [
-                'element {}'.format(i) for i in range(1, len(expected) + 1)
-            ]
-        elif are_record_types_equivalent(record_type, 'structure'):
-            labels, expected = zip(*expected.items())
-        else:
-            msg = "Unrecognized record type {}".format(record_type)
-            self.fail(msg)
-
-        for label, obj in zip(labels, expected):
-            sub_record_type, data, _, extra = infer_record_type(obj)
-            if is_simple(sub_record_type):
-                data, _ = coerce_simple(sub_record_type, data, extra)
-                data_set = group[label]
-                self.assertDataSet(data_set, data)
-            elif are_record_types_equivalent(sub_record_type, 'cell'):
-                if isinstance(obj, np.ndarray):
-                    record_size = np.atleast_2d(obj).shape
-                else:
-                    record_size = (1, len(obj))
-                sub_group = group[label]
-                self.assertCompositeGroup(
-                    sub_group,
-                    obj,
-                    RecordType=sub_record_type,
-                    RecordSize=record_size,
-                )
-            elif are_record_types_equivalent(sub_record_type, 'structure'):
-                sub_group = group[label]
-                field_names = ' '.join(sorted(obj.keys()))
-                self.assertCompositeGroup(
-                    sub_group,
-                    obj,
-                    RecordType=sub_record_type,
-                    FieldNames=field_names,
-                )
-            else:
-                msg = "Unrecognized record type {}".format(sub_record_type)
-                self.fail(msg)
 
 
 class TestSDAFileExtract(unittest.TestCase):
@@ -621,142 +331,52 @@ class TestSDAFileExtract(unittest.TestCase):
             sda_file.extract('test')
             self.assertEqual(sda_file.Updated, 'Unmodified')
 
-    def test_character_scalar(self):
+    def test_round_trip(self):
+
+        test_set = (
+            TEST_NUMERIC + TEST_LOGICAL + TEST_CHARACTER + TEST_STRUCTURE
+        )
+
+        def assert_nested_equal(a, b):
+            # Unravel lists and tuples
+            if isinstance(a, (list, tuple)) or isinstance(b, (list, tuple)):
+                for item_a, item_b in zip_longest(a, b):
+                    assert_nested_equal(item_a, item_b)
+            else:
+                return assert_equal(a, b)
+
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
-            expected = string.printable
-            sda_file.insert('test', expected)
-            extracted = sda_file.extract('test')
-            self.assertEqual(extracted, expected)
 
-            expected = ''
-            sda_file.insert('test2', '')
-            extracted = sda_file.extract('test2')
-            self.assertEqual(extracted, expected)
-
-    def test_file(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            contents = b'Hello world'
-            sda_file.insert('test', io.BytesIO(contents))
-            extracted = sda_file.extract('test')
-            self.assertEqual(extracted, contents)
-
-    def test_to_file(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            contents = b'Hello world'
-            sda_file.insert('test', io.BytesIO(contents))
-
-            with temporary_file() as destination_path:
-                with self.assertRaises(IOError):
-                    sda_file.extract_to_file('test', destination_path)
-
-                sda_file.extract_to_file('test', destination_path, True)
-
-                with open(destination_path, 'rb') as f:
-                    extracted = f.read()
-
-            self.assertEqual(extracted, contents)
-
-            # The file is closed and gone, try again
-            sda_file.extract_to_file('test', destination_path, True)
-            with open(destination_path, 'rb') as f:
-                extracted = f.read()
-
-            self.assertEqual(extracted, contents)
-
-    def test_to_file_non_file(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            sda_file.insert('test', 'not a file record')
-
-            with temporary_file() as destination_path:
-                with self.assertRaises(ValueError):
-                    sda_file.extract_to_file('test', destination_path, True)
-
-    def test_logical_scalar(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            sda_file.insert('true', True)
-            sda_file.insert('false', False)
-            self.assertTrue(sda_file.extract('true'))
-            self.assertFalse(sda_file.extract('false'))
-
-    def test_logical_array(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            expected = np.array([1, 0, 1, 1], dtype=bool).reshape(2, 2)
-            sda_file.insert('test', expected)
-            extracted = sda_file.extract('test')
-            assert_array_equal(expected, extracted)
-            self.assertEqual(extracted.dtype, expected.dtype)
-
-    def test_numeric_scalar(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            sda_file.insert('test', 3.14159)
-            sda_file.insert('empty', np.nan)
-            self.assertEqual(sda_file.extract('test'), 3.14159)
-            self.assertTrue(np.isnan(sda_file.extract('empty')))
-
-    def test_numeric_array(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            for i, (data, typ) in enumerate(TEST_ARRAYS):
-                if typ == 'numeric' and isinstance(data, np.ndarray):
-                    label = 'test' + str(i)
-                    sda_file.insert(label, data)
-                    extracted = sda_file.extract(label)
-                    self.assertEqual(data.dtype, extracted.dtype)
-                    assert_array_equal(extracted, data)
-
-            sda_file.insert('empty', np.array([], dtype=float))
-            self.assertTrue(np.isnan(sda_file.extract('empty')))
-
-    def test_sparse(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            for i, data in enumerate(TEST_SPARSE):
-                label = 'test' + str(i)
-                sda_file.insert(label, data)
+            for i, data in enumerate(test_set):
+                label = "test" + str(i)
+                sda_file.insert(label, data, '', i % 10)
                 extracted = sda_file.extract(label)
-                self.assertIsInstance(extracted, coo_matrix)
-                self.assertEqual(extracted.dtype, data.dtype)
-                assert_array_equal(extracted.toarray(), data.toarray())
-
-    def test_sparse_complex(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            for i, data in enumerate(TEST_SPARSE_COMPLEX):
-                label = 'test' + str(i)
-                sda_file.insert(label, data)
-                extracted = sda_file.extract(label)
-                self.assertIsInstance(extracted, coo_matrix)
-                self.assertEqual(extracted.dtype, data.dtype)
-                assert_array_equal(extracted.toarray(), data.toarray())
-
-    def test_cell(self):
-        with temporary_file() as file_path:
-            sda_file = SDAFile(file_path, 'w')
-            for i, data in enumerate(TEST_CELL):
-                label = 'test' + str(i)
-                sda_file.insert(label, data)
-                extracted = sda_file.extract(label)
-                data = np.asarray(data, dtype=object)
-                extracted = np.asarray(data, dtype=object)
                 assert_equal(extracted, data)
 
-    def test_structure(self):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
-            for i, data in enumerate(TEST_STRUCTURE):
-                label = 'test' + str(i)
-                sda_file.insert(label, data)
+
+            for i, data in enumerate(TEST_CELL):
+                label = "test" + str(i)
+                sda_file.insert(label, data, '', i % 10)
                 extracted = sda_file.extract(label)
-                self.assertEqual(sorted(data.keys()), sorted(extracted.keys()))
-                for key in data:
-                    assert_equal(extracted[key], data[key])
+                assert_nested_equal(extracted, data)
+
+        test_set = TEST_SPARSE + TEST_SPARSE_COMPLEX
+
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+
+            for i, data in enumerate(test_set):
+                label = "test" + str(i)
+                sda_file.insert(label, data, '', i % 10)
+                extracted = sda_file.extract(label)
+                expected = data.tocoo()
+                self.assertEqual(extracted.dtype, expected.dtype)
+                assert_equal(extracted.row, expected.row)
+                assert_equal(extracted.col, expected.col)
+                assert_equal(extracted.data, expected.data)
 
 
 class TestSDAFileDescribe(unittest.TestCase):
@@ -823,13 +443,13 @@ class TestSDAFileMisc(unittest.TestCase):
             sda_file = SDAFile(file_path, 'w')
 
             labels = []
-
-            ALL = (
-                [obj for obj, _ in TEST_ARRAYS + TEST_SCALARS] + TEST_CELL +
-                TEST_SPARSE + TEST_SPARSE_COMPLEX + TEST_STRUCTURE
+            test_set = (
+                TEST_NUMERIC + TEST_LOGICAL + TEST_CHARACTER + TEST_CELL +
+                TEST_STRUCTURE + TEST_STRUCTURE + TEST_SPARSE +
+                TEST_SPARSE_COMPLEX
             )
 
-            for i, obj in enumerate(ALL):
+            for i, obj in enumerate(test_set):
                 label = 'test' + str(i)
                 labels.append(label)
                 sda_file.insert(label, obj)
@@ -878,13 +498,13 @@ class TestSDAFileMisc(unittest.TestCase):
             sda_file = SDAFile(file_path, 'w')
 
             labels = []
-            for i, (obj, _) in enumerate(TEST_ARRAYS[:4]):
-                label = 'array' + str(i)
+            for i, obj in enumerate(TEST_NUMERIC[:4]):
+                label = 'bar' + str(i)
                 labels.append(label)
                 sda_file.insert(label, obj, label, i)
 
-            for i, (obj, _) in enumerate(TEST_SCALARS[:2]):
-                label = 'scalar' + str(i)
+            for i, obj in enumerate(TEST_NUMERIC[4:6]):
+                label = 'foo' + str(i)
                 labels.append(label)
                 sda_file.insert(label, obj, label, i)
 
@@ -896,7 +516,7 @@ class TestSDAFileMisc(unittest.TestCase):
             assert_array_equal(state['Description'], labels)
             assert_array_equal(state['Deflate'], [0, 1, 2, 3, 0, 1])
 
-            state = sda_file.probe('array.*')
+            state = sda_file.probe('bar.*')
             state.sort_index()
             self.assertEqual(len(state), 4)
             assert_array_equal(state.columns, cols)
@@ -904,7 +524,7 @@ class TestSDAFileMisc(unittest.TestCase):
             assert_array_equal(state['Description'], labels[:4])
             assert_array_equal(state['Deflate'], [0, 1, 2, 3])
 
-            state = sda_file.probe('scalar.*')
+            state = sda_file.probe('foo.*')
             state.sort_index()
             self.assertEqual(len(state), 2)
             assert_array_equal(state.columns, cols)
@@ -918,11 +538,9 @@ class TestSDAFileReplaceUpdate(unittest.TestCase):
     def test_replace(self):
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
-            sda_file.insert('test', TEST_ARRAYS[0][0], 'test_description', 1)
+            sda_file.insert('test', TEST_NUMERIC[0], 'test_description', 1)
 
-            replacements = [
-                data for (data, _) in TEST_ARRAYS[1:] + TEST_SCALARS
-            ]
+            replacements = TEST_NUMERIC[:1]
             random.shuffle(replacements)
             replacements = replacements[:10]
 
