@@ -916,7 +916,6 @@ class TestSDAFileMisc(unittest.TestCase):
 class TestSDAFileReplaceUpdate(unittest.TestCase):
 
     def test_replace(self):
-
         with temporary_file() as file_path:
             sda_file = SDAFile(file_path, 'w')
             sda_file.insert('test', TEST_ARRAYS[0][0], 'test_description', 1)
@@ -943,13 +942,12 @@ class TestSDAFileReplaceUpdate(unittest.TestCase):
             self.assertNotEqual(sda_file.Updated, 'Unmodified')
 
     def test_replace_non_object(self):
-
         reference_path = data_path('SDAreference.sda')
         with temporary_file() as file_path:
             # Copy the reference, which as an object in it.
             shutil.copy(reference_path, file_path)
             sda_file = SDAFile(file_path, 'a')
-            label = 'example A'
+            label = 'example A1'
             data = sda_file.extract('example I')
             with self.assertRaises(ValueError):
                 sda_file.update_object(label, data)
