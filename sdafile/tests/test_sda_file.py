@@ -422,6 +422,11 @@ class TestSDAFileInsert(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sda_file.insert('bad', data, 'bad', 0, as_structures=True)
 
+            # Cell of non-structures should fail
+            data = [True]
+            with self.assertRaises(ValueError):
+                sda_file.insert('bad', data, 'bad', 0, as_structures=True)
+
     def test_file(self):
 
         with temporary_file() as file_path:
