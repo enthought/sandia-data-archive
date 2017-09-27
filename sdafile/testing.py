@@ -2,12 +2,15 @@ from contextlib import contextmanager
 import os
 import os.path as op
 import tempfile
+import unittest
 
 import h5py
 import numpy as np
+from numpy.testing import assert_equal
 from scipy.sparse import coo_matrix, eye
 
 import sdafile
+from sdafile.utils import get_decoded
 
 
 DATA_DIR = op.join(op.abspath(op.dirname(sdafile.__file__)), 'tests', 'data')
@@ -43,48 +46,55 @@ COMPLEX_VAL = 1.23 + 4.56j
 STR_VAL = 'foo'
 UNICODE_VAL = u'foo'
 
-# scalars
-TEST_SCALARS = [
-    (FLOAT_VAL, 'numeric'),
-    (np.float32(FLOAT_VAL), 'numeric'),
-    (np.float64(FLOAT_VAL), 'numeric'),
-    (INT_VAL, 'numeric'),
-    (np.long(INT_VAL), 'numeric'),
-    (np.int8(INT_VAL), 'numeric'),
-    (np.int16(INT_VAL), 'numeric'),
-    (np.int32(INT_VAL), 'numeric'),
-    (np.int64(INT_VAL), 'numeric'),
-    (np.uint8(INT_VAL), 'numeric'),
-    (np.uint16(INT_VAL), 'numeric'),
-    (np.uint32(INT_VAL), 'numeric'),
-    (np.uint64(INT_VAL), 'numeric'),
-    (COMPLEX_VAL, 'numeric'),
-    (np.complex64(COMPLEX_VAL), 'numeric'),
-    (np.complex128(COMPLEX_VAL), 'numeric'),
-    (BOOL_VAL, 'logical'),
-    (np.bool_(BOOL_VAL), 'logical'),
-    (STR_VAL, 'character'),
-    (np.str_(STR_VAL), 'character'),
-    (np.unicode_(UNICODE_VAL), 'character'),
+TEST_NUMERIC = [
+    FLOAT_VAL,
+    np.float32(FLOAT_VAL),
+    np.float64(FLOAT_VAL),
+    INT_VAL,
+    np.long(INT_VAL),
+    np.int8(INT_VAL),
+    np.int16(INT_VAL),
+    np.int32(INT_VAL),
+    np.int64(INT_VAL),
+    np.uint8(INT_VAL),
+    np.uint16(INT_VAL),
+    np.uint32(INT_VAL),
+    np.uint64(INT_VAL),
+    COMPLEX_VAL,
+    np.complex64(COMPLEX_VAL),
+    np.complex128(COMPLEX_VAL),
 ]
 
-# array scalars
-TEST_SCALARS += [
-    (np.array(val), typ) for val, typ in TEST_SCALARS if typ != 'character'
+TEST_NUMERIC += [
+    np.array(val) for val in TEST_NUMERIC
+] + [
+    np.array([val] * 4) for val in TEST_NUMERIC
+] + [
+    np.array([val] * 6).reshape(2, 3) for val in TEST_NUMERIC
 ]
 
+TEST_LOGICAL = [
+    BOOL_VAL,
+    np.bool_(BOOL_VAL),
+]
 
-# arrays
-TEST_ARRAYS = []
-for val, typ in TEST_SCALARS:
-    if typ != 'character':
-        arr = np.array([val] * 4)
-        TEST_ARRAYS.append((arr, typ))
-        TEST_ARRAYS.append((np.array(arr).reshape(2, 2), typ))
+TEST_LOGICAL += [
+    np.array(val) for val in TEST_LOGICAL
+] + [
+    np.array([val] * 4) for val in TEST_LOGICAL
+] + [
+    np.array([val] * 6).reshape(2, 3) for val in TEST_LOGICAL
+]
 
-TEST_ARRAYS.append(
-    (np.array(list(STR_VAL), 'S1').reshape(-1, 1), 'character'),
-)
+TEST_CHARACTER = [
+    STR_VAL,
+    np.str_(STR_VAL),
+    np.unicode_(STR_VAL),
+]
+
+TEST_CHARACTER += [
+    np.array(list(val)).reshape(-1, 1) for val in TEST_CHARACTER
+]
 
 
 # Sparse matrix in all forms
@@ -102,7 +112,6 @@ TEST_SPARSE_COMPLEX.extend([
     TEST_SPARSE_COMPLEX[0].tolil(), TEST_SPARSE_COMPLEX[0].tobsr(),
     TEST_SPARSE_COMPLEX[0].todok()
 ])
-
 
 # lists, tuples
 TEST_CELL = [
@@ -163,7 +172,6 @@ TEST_UNSUPPORTED = [
     lambda x: x**2,
     {0},
     None,
-
 ]
 
 
@@ -202,3 +210,78 @@ def temporary_h5file(suffix='.sda'):
         finally:
             if h5file.id.valid:  # file is open
                 h5file.close()
+
+
+class MockRecordInserter(object):
+    """ RecordInserter for testing.
+
+    This must be used instantiated.
+
+    """
+
+    record_type = 'testing'
+
+    def __init__(self, called):
+        self.called = called
+
+    def __call__(self, label, data, deflate, registry=None):
+        # Mock initialization.
+        self.label = label
+        self.deflate = int(deflate)
+        self.data = self.original_data = data
+        self.empty = 'no'
+        self._registry = registry
+        return self
+
+    def can_insert(self, data):
+        return True
+
+    def insert(self, h5file, description):
+        self.called.append(description)
+
+
+class InserterTestCase(unittest.TestCase):
+
+    def setUp(self):
+        from sdafile.record_inserter import InserterRegistry
+        self.registry = InserterRegistry()
+
+    def tearDown(self):
+        del self.registry
+
+    @contextmanager
+    def insert(self, cls, label, data, deflate, description):
+        inserter = cls(label, data, deflate, self.registry)
+        with temporary_h5file() as h5file:
+            inserter.insert(h5file, description)
+            yield h5file
+
+    def assertAttrs(self, dict_like, **attrs):
+        assert_equal(attrs, get_decoded(dict_like))
+
+    def assertRegistry(self, cls, data):
+        """ Assert registry works for data. """
+        self.assertTrue(cls.can_insert(data))
+        found_cls = self.registry.get_inserter(data)
+        self.assertIs(found_cls, cls)
+
+    def assertSimpleInsert(self, cls, data, group_attrs, ds_attrs, expected):
+        """ Test simple insertion. Pass expected=None to skip data check. """
+        # Check registration
+        self.assertRegistry(cls, data)
+
+        # Test insertion
+        label = 'test'
+        with self.insert(cls, label, data, 0, 'desc') as h5file:
+            grp = h5file[label]
+            self.assertAttrs(
+                grp.attrs,
+                Description='desc',
+                Deflate=0,
+                **group_attrs
+            )
+            ds = grp[label]
+            self.assertAttrs(ds.attrs, **ds_attrs)
+            if expected is not None:
+                stored = ds[()]
+                assert_equal(stored, expected)

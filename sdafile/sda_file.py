@@ -19,11 +19,11 @@ import h5py
 import numpy as np
 
 from .extract import extract
-from .inserter import Inserter
+from .record_inserter import InserterRegistry
 from .utils import (
     are_signatures_equivalent, error_if_bad_header, error_if_not_writable,
-    get_decoded, infer_record_type, is_valid_writable, set_encoded, unnest,
-    unnest_record, update_header, write_header,
+    get_decoded, is_valid_writable, set_encoded, unnest, unnest_record,
+    update_header, write_header,
 )
 
 
@@ -59,6 +59,7 @@ class SDAFile(object):
         self._mode = mode
         self._filename = name
         self._kw = kw
+        self._registry = InserterRegistry()
 
         # Check existence
         if mode in ('r', 'r+') and not file_exists:
@@ -295,10 +296,12 @@ class SDAFile(object):
         if not isinstance(deflate, (int, np.integer)) or not 0 <= deflate <= 9:
             msg = "'deflate' must be an integer from 0 to 9"
             raise ValueError(msg)
-        inserter = Inserter(label, data, deflate)
-        if inserter.record_type is None:
+        cls = self._registry.get_inserter(data)
+        if cls is None:
             msg = "{!r} is not a supported type".format(data)
             raise ValueError(msg)
+
+        inserter = cls(label, data, deflate, self._registry)
 
         if as_structures:
             if inserter.record_type != 'cell':
@@ -306,7 +309,9 @@ class SDAFile(object):
                 raise ValueError(msg)
 
             # Signatures must be homogeneous.
-            signatures = set(unnest(sub_data) for sub_data in np.ravel(data))
+            signatures = set(
+                unnest(sub_data, self._registry) for sub_data in np.ravel(data)
+            )
             if len(signatures) > 1:
                 msg = "Data cells are not homogenous"
                 raise ValueError(msg)
@@ -322,7 +327,15 @@ class SDAFile(object):
             inserter.record_type = 'structures'
 
         with self._h5file('r+') as h5file:
-            inserter.insert(h5file, description)
+            try:
+                inserter.insert(h5file, description)
+            except Exception:
+                # Do not leave things in an invalid state
+                if label in h5file:
+                    del h5file[label]
+                raise
+            else:
+                update_header(h5file.attrs)
 
     def insert_from_file(self, path, description='', deflate=0):
         """ Insert the contents of a file as a file record.
@@ -509,7 +522,12 @@ class SDAFile(object):
         self._validate_can_write()
         self._validate_labels(label, must_exist=True)
 
-        record_type, _, _, _ = infer_record_type(data)
+        cls = self._registry.get_inserter(data)
+        if cls is None:
+            msg = "{!r} is not a supported type".format(data)
+            raise ValueError(msg)
+
+        record_type = cls.record_type
         if record_type != 'structure':
             raise ValueError("Input data is not a mapping")
 
@@ -520,7 +538,7 @@ class SDAFile(object):
             if not attrs['RecordType'] == 'object':
                 raise ValueError("Record '{}' is not an object".format(label))
             record_sig = unnest_record(grp)
-            data_sig = unnest(data)
+            data_sig = unnest(data, self._registry)
             if not are_signatures_equivalent(record_sig, data_sig):
                 msg = "Data is not compatible with record '{}'"
                 raise ValueError(msg.format(label))
