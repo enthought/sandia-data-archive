@@ -1,3 +1,4 @@
+import io
 import os
 import random
 import shutil
@@ -377,6 +378,38 @@ class TestSDAFileExtract(unittest.TestCase):
                 assert_equal(extracted.row, expected.row)
                 assert_equal(extracted.col, expected.col)
                 assert_equal(extracted.data, expected.data)
+
+    def test_to_file(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            contents = b'Hello world'
+            sda_file.insert('test', io.BytesIO(contents))
+
+            with temporary_file() as destination_path:
+                with self.assertRaises(IOError):
+                    sda_file.extract_to_file('test', destination_path)
+
+                sda_file.extract_to_file('test', destination_path, True)
+
+                with open(destination_path, 'rb') as f:
+                    extracted = f.read()
+            self.assertEqual(extracted, contents)
+
+            # The file is closed and gone, try again
+            sda_file.extract_to_file('test', destination_path, True)
+            with open(destination_path, 'rb') as f:
+                extracted = f.read()
+
+            self.assertEqual(extracted, contents)
+
+    def test_to_file_non_file(self):
+        with temporary_file() as file_path:
+            sda_file = SDAFile(file_path, 'w')
+            sda_file.insert('test', 'not a file record')
+
+            with temporary_file() as destination_path:
+                with self.assertRaises(ValueError):
+                    sda_file.extract_to_file('test', destination_path, True)
 
 
 class TestSDAFileDescribe(unittest.TestCase):
