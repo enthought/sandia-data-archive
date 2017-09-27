@@ -6,10 +6,13 @@
 sdafile Documentation
 =====================
 
+Read, write, inspect, and manipulate Sandia Data Archive files.
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
    quickstart
+   record_types
    api
    license
