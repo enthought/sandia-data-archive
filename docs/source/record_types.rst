@@ -109,7 +109,8 @@ Python. However, :meth:`~SDAFile.update_object` can be used to update an
 existing ``object`` record. 
 
 ``object`` records are extracted as dictionaries, like structure records.
-Information about the MATLAB class corresponding to the object is lost.
+Information about the MATLAB class corresponding to the object is not
+extracted.
 
 Structures Records
 ------------------
