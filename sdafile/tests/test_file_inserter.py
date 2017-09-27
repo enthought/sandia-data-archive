@@ -12,8 +12,10 @@ class TestFileInserter(InserterTestCase):
             Empty='no',
         )
         self.ds_attrs = dict(
-            RecordType='file',
+            RecordType='numeric',
             Empty='no',
+            Complex='no',
+            Sparse='no',
         )
 
     def tearDown(self):
@@ -28,7 +30,7 @@ class TestFileInserter(InserterTestCase):
                 f.write(contents)
 
             with open(file_path, 'rb') as f:
-                expected = np.array([48, 49], np.uint8).reshape(1, 2)
+                expected = np.array([48, 49], np.uint8).reshape(2, 1)
                 self.assertSimpleInsert(
                     FileInserter,
                     f,
@@ -44,7 +46,7 @@ class TestFileInserter(InserterTestCase):
                 f.write(contents)
 
             with open(file_path, 'r') as f:
-                expected = np.array([48, 49], np.uint8).reshape(1, 2)
+                expected = np.array([48, 49], np.uint8).reshape(2, 1)
                 self.assertSimpleInsert(
                     FileInserter,
                     f,

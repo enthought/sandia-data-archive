@@ -36,8 +36,8 @@ class TestSDAReference(unittest.TestCase):
 
     def test_ReferenceArchivedotm(self):
         label = 'ReferenceArchive.m'
-        with self.sda_file._h5file('r') as h5file:
-            contents = h5file[label][label][()].tobytes()
+        with open(data_path('ReferenceArchive.m'), 'rb') as f:
+            contents = f.read()
         self.assertScalar(label, contents)
 
     def test_example_A1(self):
