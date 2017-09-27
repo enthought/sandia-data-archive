@@ -1,10 +1,10 @@
+import os.path as op
 import argparse
 
 import numpy as np
 from scipy import sparse
 
-from sdafile import SDAFile
-
+import sdafile
 
 EXAMPLE_A1 = np.zeros((5, 1), dtype=np.float64)
 
@@ -23,7 +23,15 @@ EXAMPLE_C = 'Here is some text'
 
 def make_example_data(filename):
 
-    sda_file = SDAFile(filename, 'w')
+    sda_file = sdafile.SDAFile(filename, 'w')
+
+    ref_path = op.join(op.abspath(
+        op.dirname(sdafile.__file__)), 'tests', 'data', 'ReferenceArchive.m'
+    )
+
+    sda_file.insert_from_file(
+        ref_path, "MATLAB script for generating a reference archive"
+    )
 
     sda_file.insert("example A1", EXAMPLE_A1, "5x1 zeros")
 
