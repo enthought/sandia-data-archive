@@ -37,15 +37,21 @@ class StringInserter(ArrayInserter):
         ArrayInserter.prepare_data(self)
 
 
-@inserter
-class BytesInserter(ArrayInserter):
-    """ Inserter for bytes. """
+if bytes is str:  # python 3
 
-    @staticmethod
-    def can_insert(data):
-        """ Insert bytes. """
-        return isinstance(data, bytes)
+    BytesInserter = StringInserter
 
-    def prepare_data(self):
-        self.data = np.frombuffer(self.data, 'S1')
-        ArrayInserter.prepare_data(self)
+else:  # python 2
+
+    @inserter
+    class BytesInserter(ArrayInserter):
+        """ Inserter for bytes. """
+
+        @staticmethod
+        def can_insert(data):
+            """ Insert bytes. """
+            return isinstance(data, bytes)
+
+        def prepare_data(self):
+            self.data = np.frombuffer(self.data, 'S1')
+            ArrayInserter.prepare_data(self)

@@ -1,4 +1,3 @@
-from itertools import zip_longest
 import os
 import random
 import shutil
@@ -340,7 +339,8 @@ class TestSDAFileExtract(unittest.TestCase):
         def assert_nested_equal(a, b):
             # Unravel lists and tuples
             if isinstance(a, (list, tuple)) or isinstance(b, (list, tuple)):
-                for item_a, item_b in zip_longest(a, b):
+                assert_equal(len(a), len(b))
+                for item_a, item_b in zip(a, b):
                     assert_nested_equal(item_a, item_b)
             else:
                 return assert_equal(a, b)

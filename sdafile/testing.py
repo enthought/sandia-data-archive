@@ -10,7 +10,6 @@ from numpy.testing import assert_equal
 from scipy.sparse import coo_matrix, eye
 
 import sdafile
-from sdafile.record_inserter import RecordInserter
 from sdafile.utils import get_decoded
 
 
@@ -225,9 +224,13 @@ class MockRecordInserter(object):
     def __init__(self, called):
         self.called = called
 
-    def __call__(self, *args, **kw):
+    def __call__(self, label, data, deflate, registry=None):
         # Mock initialization.
-        RecordInserter.__init__(self, *args, **kw)
+        self.label = label
+        self.deflate = int(deflate)
+        self.data = self.original_data = data
+        self.empty = 'no'
+        self._registry = registry
         return self
 
     def can_insert(self, data):
