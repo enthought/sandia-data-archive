@@ -318,6 +318,26 @@ def unnest_record(grp):
     return tuple(item[:2] for item in items)
 
 
+def validate_structures(data, registry):
+    """ Validate that passed data is suitable to be a 'structures' record. """
+    # Signatures must be homogeneous.
+    signatures = set(
+        unnest(sub_data, registry) for sub_data in np.ravel(data)
+    )
+    if len(signatures) > 1:
+        msg = "Data cells are not homogenous"
+        raise ValueError(msg)
+
+    # The top-most record must be a structure record
+    sig = signatures.pop()
+    record_type = sig[0][1]
+    if record_type != 'structure':
+        msg = "Data does not contain structure records"
+        raise ValueError(msg)
+
+    return sig
+
+
 def update_header(attrs):
     """ Update timestamp and version to 1.1 in a header. """
     set_encoded(
