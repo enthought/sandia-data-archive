@@ -23,7 +23,7 @@ from .record_inserter import InserterRegistry
 from .utils import (
     are_signatures_equivalent, error_if_bad_header, error_if_not_writable,
     get_decoded, is_valid_writable, set_encoded, unnest, unnest_record,
-    update_header, write_header,
+    update_header, validate_structures, write_header,
 )
 
 
@@ -249,10 +249,8 @@ class SDAFile(object):
             collections.abc.Sequence are stored as 'cell' records, no matter
             the contents.
 
-        mappings :
-            Dictionaries and anything else that identifies as
-            collections.abc.Sequence and not another type listed here are
-            stored as 'structure' records.
+        dicts :
+            Dictionaries are stored as 'structure' records.
 
         numpy arrays :
             If the dtype is a supported numeric type, then a numpy array is
@@ -308,20 +306,7 @@ class SDAFile(object):
                 msg = "Data cannot be stored as a 'structures' record."
                 raise ValueError(msg)
 
-            # Signatures must be homogeneous.
-            signatures = set(
-                unnest(sub_data, self._registry) for sub_data in np.ravel(data)
-            )
-            if len(signatures) > 1:
-                msg = "Data cells are not homogenous"
-                raise ValueError(msg)
-
-            # The top-most record must be a structure record
-            sig = signatures.pop()
-            record_type = sig[0][1]
-            if record_type != 'structure':
-                msg = "Data does not contain structure records"
-                raise ValueError(msg)
+            validate_structures(data, self._registry)
 
             # Tell the inserter to use the 'structures' record type
             inserter.record_type = 'structures'
@@ -529,7 +514,7 @@ class SDAFile(object):
 
         record_type = cls.record_type
         if record_type != 'structure':
-            raise ValueError("Input data is not a mapping")
+            raise ValueError("Input data is not a dictionary")
 
         with self._h5file('r+') as h5file:
             # Check the general structure of the data and file
@@ -537,6 +522,8 @@ class SDAFile(object):
             attrs = get_decoded(grp.attrs)
             if not attrs['RecordType'] == 'object':
                 raise ValueError("Record '{}' is not an object".format(label))
+            if attrs['Empty'] == 'yes':
+                raise ValueError("Cannot update an empty record")
             record_sig = unnest_record(grp)
             data_sig = unnest(data, self._registry)
             if not are_signatures_equivalent(record_sig, data_sig):
@@ -547,12 +534,72 @@ class SDAFile(object):
 
         self.insert(label, data, attrs['Description'], int(attrs['Deflate']))
 
-        # Fix the record type and updat the header
+        # Fix the record type and update the header
         with self._h5file('r+') as h5file:
             grp = h5file[label]
             set_encoded(
                 grp.attrs,
                 RecordType='object',
+                Class=attrs['Class'],
+            )
+            update_header(h5file.attrs)
+
+    def update_objects(self, label, data):
+        """ Update an existing objects record.
+
+        Parameters
+        ----------
+        label : str
+            Label of the objects record.
+        data : list
+            The data with which to replace the objects record.
+
+        Notes
+        -----
+        This is more strict than **replace** in that the intention is to update
+        the contents of an 'objects' record while preserving the record type.
+        The simplest way to make use of this is to *extract* an objects record,
+        replace some data, and then call this to update the stored record.
+
+        """
+        self._validate_can_write()
+        self._validate_labels(label, must_exist=True)
+
+        cls = self._registry.get_inserter(data)
+        if cls is None:
+            msg = "{!r} is not a supported type".format(data)
+            raise ValueError(msg)
+
+        record_type = cls.record_type
+        if record_type != 'cell':
+            raise ValueError("Input data is not a list")
+
+        # To be an 'objects' record, this must look like a 'structures' record.
+        data_sig = validate_structures(data, self._registry)
+
+        with self._h5file('r+') as h5file:
+            # Check the general structure of the data and file
+            grp = h5file[label]
+            attrs = get_decoded(grp.attrs)
+            if not attrs['RecordType'] == 'objects':
+                raise ValueError("Record '{}' is not an objects".format(label))
+            if attrs['Empty'] == 'yes':
+                raise ValueError("Cannot update an empty record")
+            record_sig = unnest_record(grp['element 1'])
+            if not are_signatures_equivalent(record_sig, data_sig):
+                msg = "Data is not compatible with record '{}'"
+                raise ValueError(msg.format(label))
+
+            del h5file[label]
+
+        self.insert(label, data, attrs['Description'], int(attrs['Deflate']))
+
+        # Fix the record type and update the header
+        with self._h5file('r+') as h5file:
+            grp = h5file[label]
+            set_encoded(
+                grp.attrs,
+                RecordType='objects',
                 Class=attrs['Class'],
             )
             update_header(h5file.attrs)
