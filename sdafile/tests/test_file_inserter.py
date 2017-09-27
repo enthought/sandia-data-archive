@@ -21,13 +21,29 @@ class TestFileInserter(InserterTestCase):
         del self.ds_attrs
         InserterTestCase.tearDown(self)
 
-    def test_file_inserter(self):
+    def test_file_inserter_binary(self):
         with temporary_file() as file_path:
             contents = b'01'
             with open(file_path, 'wb') as f:
                 f.write(contents)
 
             with open(file_path, 'rb') as f:
+                expected = np.array([48, 49], np.uint8).reshape(1, 2)
+                self.assertSimpleInsert(
+                    FileInserter,
+                    f,
+                    self.grp_attrs,
+                    self.ds_attrs,
+                    expected,
+                )
+
+    def test_file_inserter_ascii(self):
+        with temporary_file() as file_path:
+            contents = b'01'
+            with open(file_path, 'wb') as f:
+                f.write(contents)
+
+            with open(file_path, 'r') as f:
                 expected = np.array([48, 49], np.uint8).reshape(1, 2)
                 self.assertSimpleInsert(
                     FileInserter,
