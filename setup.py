@@ -11,11 +11,11 @@ with open(version_filename) as version_file:
 
 
 install_requires = [
-    "h5py", 
-    "scipy", 
-    "pandas", 
-    "numpy", 
-    "packaging", 
+    "h5py",
+    "scipy",
+    "pandas",
+    "numpy",
+    "packaging",
 ]
 
 

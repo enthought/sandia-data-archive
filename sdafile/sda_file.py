@@ -367,7 +367,7 @@ class SDAFile(object):
             return list(h5file.keys())
 
     def remove(self, *labels):
-        """ Remove specified labels from the archive.
+        """ Remove specified records from the archive.
 
         This cannot be undone.
 

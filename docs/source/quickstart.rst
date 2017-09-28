@@ -16,8 +16,8 @@ the file access mode. ::
     sda_file = SDAFile('example.sda', 'w')
 
 In this case, we're creating a new file named ``example.sda`` in write mode
-(``w``). If a file exists with this name, it will be overwritten. To open a
-file for reading or appending, use file modes ``r`` or ``w``, respectively.
+(``'w'``). If a file exists with this name, it will be overwritten. To open a
+file for reading or appending, use file modes ``'r'`` or ``'a'``, respectively.
 
 Data can be added to the archive via the :meth:`~SDAFile.insert` method.
 This method accepts "primitive" data: numeric, boolean, and string scalars,
@@ -47,7 +47,7 @@ Data can be retrieved via :meth:`~SDAFile.extract`. ::
     >>> sda_file.extract("example 3")
     {'F': False, 'T': True}
 
-To remove objects, use :meth:`~SDAFile.remove`. To update records,
+To remove records, use :meth:`~SDAFile.remove`. To replace records,
 :meth:`~SDAFile.replace`. ::
 
     >>> sda_file.remove("example 3")
@@ -59,10 +59,13 @@ To remove objects, use :meth:`~SDAFile.remove`. To update records,
     np.array([0., 0., 0., 0., 0.])
 
 The SDA format was designed with MATLAB in mind, and can store MATLAB objects
-as object records.  These records cannot be written from Python, but they can
-be extracted (as dictionaries) and replaced. Given such a record, the
+as ``object`` records.  These records cannot be written from Python, but they
+can be extracted (as dictionaries) and replaced. Given such a record, the
 :meth:`~SDAFile.update_object` can be used to update its contents. ::
 
     record = different_sda_file.extract("some object record")
     record['Some parameter'] = 10
     different_sda_file.update_object("some object record", record)
+
+Similarly, the :meth:`~SDAFile.update_objects` method is used to update
+``objects`` records.
