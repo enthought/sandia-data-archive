@@ -16,8 +16,8 @@ the file access mode. ::
     sda_file = SDAFile('example.sda', 'w')
 
 In this case, we're creating a new file named ``example.sda`` in write mode
-(``w``). If a file exists with this name, it will be overwritten. To open a
-file for reading or appending, use file modes ``r`` or ``w``, respectively.
+(``'w'``). If a file exists with this name, it will be overwritten. To open a
+file for reading or appending, use file modes ``'r'`` or ``'a'``, respectively.
 
 Data can be added to the archive via the :meth:`~SDAFile.insert` method.
 This method accepts "primitive" data: numeric, boolean, and string scalars,
